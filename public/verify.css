@@ -23,3 +23,6 @@ body{margin:0;background:var(--bg);color:#1b2333;font-family:"Pretendard","Apple
 .vf-preview canvas{display:block;width:100%;height:auto}
 .vf-foot{color:var(--muted);font-size:12px;text-align:center;margin-top:18px}
 @media (max-width:560px){.vf dl{grid-template-columns:1fr}}
+.vf-lang{display:flex;gap:6px;justify-content:flex-end;margin-bottom:10px}
+.vf-lang button{font:inherit;font-size:13px;padding:5px 14px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--muted);cursor:pointer}
+.vf-lang button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}

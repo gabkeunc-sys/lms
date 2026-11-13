@@ -110,7 +110,7 @@ export async function opsAPI({path, method, body, session, query, response, fail
   const owner = (await query("SELECT id,name FROM app_users WHERE id=$1 AND role IN ('instructor','admin') AND active=1", [body.owner_id])).rows[0];
   if (!owner) return fail('담당 강사를 선택하세요.');
   const id = randomUUID(), status = ['preparing', 'active', 'ended'].includes(body.status) ? body.status : 'preparing';
-  await query('INSERT INTO courses(id,owner_id,title,description,start_date,end_date,status,student_ids) VALUES($1,$2,$3,$4,$5,$6,$7,$8)', [id, owner.id, title, String(body.description || '').slice(0, 2000), start, end, status, '[]']);
+  await query('INSERT INTO courses(id,owner_id,title,description,start_date,end_date,status,student_ids,title_en) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)', [id, owner.id, title, String(body.description || '').slice(0, 2000), start, end, status, '[]', String(body.title_en || '').trim().slice(0, 160) || null]);
   await logActivity(query, session.id, 'course.create', title, {owner: owner.name});
   if (owner.id !== session.id) await notify(query, owner.id, `새 과정 배정: ${title}`, '관리자가 과정을 개설하고 담당 강사로 지정했습니다.', '/teach/courses', 'assign');
   return response({ok: true, id}, 201);

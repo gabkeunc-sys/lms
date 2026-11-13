@@ -26,7 +26,7 @@ async function courseStatus(query, course) {
  const rows = (await query('SELECT r.student_id,r.assessment_id,r.score,r.total FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id WHERE a.course_id=$1 AND a.published=1', [course.id])).rows;
  const ids = j(course.student_ids);
  const names = new Map(ids.length ? (await query(`SELECT id,name,email FROM app_users WHERE id IN (SELECT value FROM json_each($1))`, [JSON.stringify(ids)])).rows.map(u => [u.id, u]) : []);
- const certs = new Map((await query('SELECT * FROM certificates WHERE course_id=$1', [course.id])).rows.map(c => [c.student_id, c]));
+ const certs = new Map((await query(`SELECT t.*,(SELECT name_en FROM app_users WHERE id=t.student_id) AS student_name_en,(SELECT title_en FROM courses WHERE id=t.course_id) AS course_title_en FROM certificates t WHERE t.course_id=$1`, [course.id])).rows.map(c => [c.student_id, c]));
  const students = ids.filter(id => names.has(id)).map(id => {
   const mine = rows.filter(r => r.student_id === id), taken = new Set(mine.map(r => r.assessment_id)).size;
   const average = mine.length ? r1(mine.reduce((a, r) => a + (r.total ? r.score / r.total * 100 : 0), 0) / mine.length) : 0;
@@ -57,14 +57,14 @@ async function autoIssue(query, courses) {
  }
 }
 
-const certView = c => c && ({id: c.id, cert_no: c.cert_no, student_name: c.student_name, course_title: c.course_title, average: c.average, grade: c.grade, completed_on: c.completed_on, method: c.method, issued_at: c.issued_at, revoked_at: c.revoked_at, revoke_reason: c.revoke_reason});
+const certView = c => c && ({id: c.id, cert_no: c.cert_no, student_name: c.student_name, course_title: c.course_title, student_name_en: c.student_name_en || '', course_title_en: c.course_title_en || '', average: c.average, grade: c.grade, completed_on: c.completed_on, method: c.method, issued_at: c.issued_at, revoked_at: c.revoked_at, revoke_reason: c.revoke_reason});
 const COURSE_COLS = 'c.id,c.title,c.start_date,c.end_date,c.owner_id,c.student_ids';
 
 export async function certsAPI({path, method, body, session, query, response, fail}) {
  const verify = path.match(/^\/certificates\/verify\/([A-Z0-9-]{1,40})$/);
  if (verify && method === 'GET') {
   const c = await findCert(query, verify[1]);
-  return c ? response({valid: !c.revoked_at, certificate: {cert_no: c.cert_no, student_name: c.student_name, course_title: c.course_title, average: c.average, grade: c.grade, completed_on: c.completed_on, issued_at: c.issued_at, revoked_at: c.revoked_at, instructor: c.instructor}}): response({valid: false, certificate: null}, 404);
+  return c ? response({valid: !c.revoked_at, certificate: {cert_no: c.cert_no, student_name: c.student_name, course_title: c.course_title, student_name_en: c.student_name_en || '', course_title_en: c.course_title_en || '', average: c.average, grade: c.grade, completed_on: c.completed_on, issued_at: c.issued_at, revoked_at: c.revoked_at, instructor: c.instructor}}): response({valid: false, certificate: null}, 404);
  }
  if (!session) return fail('로그인이 필요합니다.', 401);
 
@@ -94,7 +94,7 @@ export async function certsAPI({path, method, body, session, query, response, fa
   }
   if (path === '/admin/certificates' && method === 'GET') {
    const courses = await owned(); await autoIssue(query, courses);
-   const certs = (await query(`SELECT t.*,u.name AS instructor,s.email AS student_email FROM certificates t JOIN courses c ON c.id=t.course_id LEFT JOIN app_users u ON u.id=c.owner_id LEFT JOIN app_users s ON s.id=t.student_id ORDER BY t.issued_at DESC`)).rows;
+   const certs = (await query(`SELECT t.*,(SELECT name_en FROM app_users WHERE id=t.student_id) AS student_name_en,(SELECT title_en FROM courses WHERE id=t.course_id) AS course_title_en,u.name AS instructor,s.email AS student_email FROM certificates t JOIN courses c ON c.id=t.course_id LEFT JOIN app_users u ON u.id=c.owner_id LEFT JOIN app_users s ON s.id=t.student_id ORDER BY t.issued_at DESC`)).rows;
    const stats = [];
    for (const c of courses) { const st = await courseStatus(query, c); stats.push({id: c.id, title: c.title, instructor: c.instructor, end_date: c.end_date, ended: st.ended, students: st.students.length, eligible: st.students.filter(s => s.eligible).length, issued: st.students.filter(s => s.certificate && !s.certificate.revoked_at).length}); }
    return response({pass_average: PASS_AVERAGE, today: kstToday(), certificates: certs.map(c => ({...certView(c), instructor: c.instructor, student_email: c.student_email, course_id: c.course_id})), courses: stats});
@@ -131,7 +131,7 @@ export async function certsAPI({path, method, body, session, query, response, fa
 
 async function findCert(query, no) {
  if (!CERT_NO.test(no)) return null;
- return (await query('SELECT t.*,u.name AS instructor FROM certificates t JOIN courses c ON c.id=t.course_id LEFT JOIN app_users u ON u.id=c.owner_id WHERE t.cert_no=$1', [no])).rows[0] || null;
+ return (await query('SELECT t.*,(SELECT name_en FROM app_users WHERE id=t.student_id) AS student_name_en,(SELECT title_en FROM courses WHERE id=t.course_id) AS course_title_en,u.name AS instructor FROM certificates t JOIN courses c ON c.id=t.course_id LEFT JOIN app_users u ON u.id=c.owner_id WHERE t.cert_no=$1', [no])).rows[0] || null;
 }
 
 // Public verification page (server-rendered, no login). The certificate itself is redrawn by /cert.js.
@@ -139,12 +139,12 @@ export async function verifyPage(query, no) {
  const c = await findCert(query, String(no || '').toUpperCase());
  const status = !c ? ['none', '확인되지 않은 수료증', '이 번호로 발급된 수료증이 없습니다. 번호를 다시 확인하세요.'] : c.revoked_at ? ['revoked', '취소된 수료증', '이 수료증은 발급 기관에서 취소하여 더 이상 유효하지 않습니다.'] : ['valid', '유효한 수료증', 'GAP CODING LAB 배움길 LMS에서 발급한 정식 수료증입니다.'];
  const date = d => d ? d.replace(/-/g, '. ') + '.' : '-';
- const rows = c ? [['수료자', c.student_name], ['과정', c.course_title], ['수료일', date(c.completed_on)], ['성적', `${c.grade} (${c.average})`], ['수료증 번호', c.cert_no], ['강사', c.instructor || '-'], ['발급일', date(c.issued_at.slice(0, 10))]] : [['조회한 번호', no]];
- const data = c ? ` data-no="${esc(c.cert_no)}" data-name="${esc(c.student_name)}" data-course="${esc(c.course_title)}" data-date="${esc(c.completed_on)}" data-grade="${esc(c.grade)}" data-average="${esc(c.average)}" data-revoked="${c.revoked_at ? '1' : ''}"` : '';
+ const rows = c ? [['수료자', c.student_name + (c.student_name_en ? ` (${c.student_name_en})` : '')], ['과정', c.course_title + (c.course_title_en ? ` (${c.course_title_en})` : '')], ['수료일', date(c.completed_on)], ['성적', `${c.grade} (${c.average})`], ['수료증 번호', c.cert_no], ['강사', c.instructor || '-'], ['발급일', date(c.issued_at.slice(0, 10))]] : [['조회한 번호', no]];
+ const data = c ? ` data-no="${esc(c.cert_no)}" data-name="${esc(c.student_name)}" data-name-en="${esc(c.student_name_en || '')}" data-course="${esc(c.course_title)}" data-course-en="${esc(c.course_title_en || '')}" data-date="${esc(c.completed_on)}" data-grade="${esc(c.grade)}" data-average="${esc(c.average)}" data-revoked="${c.revoked_at ? '1' : ''}"` : '';
  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>수료증 확인 · 배움길 LMS</title><link rel="icon" type="image/png" href="/images/profile_logo.png"><link rel="stylesheet" href="/verify.css"><script src="/vendor/qrcode.js" defer></script><script src="/cert.js" defer></script><script src="/verify.js" defer></script></head>
 <body><main class="vf"><div class="vf-brand"><img src="/images/profile_logo.png" alt="" width="36" height="36"><span>배움길 <b>LMS</b></span><small>수료증 진위 확인</small></div>
 <section class="vf-card vf-${status[0]}"><div class="vf-status"><span class="vf-mark" aria-hidden="true">${status[0] === 'valid' ? '✓' : status[0] === 'revoked' ? '!' : '?'}</span><div><h1>${status[1]}</h1><p>${status[2]}${c?.revoked_at ? ` (취소일 ${date(c.revoked_at.slice(0, 10))})` : ''}</p></div></div>
 <dl>${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl></section>
-${c ? `<section class="vf-preview"><canvas id="vf-cert"${data} aria-label="수료증 이미지"></canvas></section>` : ''}
+${c ? `<section class="vf-preview"><div class="vf-lang" role="group" aria-label="수료증 언어"><button type="button" data-lang="ko" aria-pressed="true">국문</button><button type="button" data-lang="en" aria-pressed="false">English</button></div><canvas id="vf-cert"${data} aria-label="수료증 이미지"></canvas></section>` : ''}
 <p class="vf-foot">이 페이지는 수료증의 QR 코드로 열립니다. 문의: 배움길 LMS 운영팀</p></main></body></html>`;
 }

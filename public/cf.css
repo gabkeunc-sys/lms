@@ -848,3 +848,9 @@ b.op-good{color:#23845a!important}b.op-warn{color:#a77400!important}b.op-bad{col
 .ct-dialog .ct-canvas{border:1px solid var(--line);border-radius:6px;margin-bottom:12px}
 @media(max-width:760px){.ct-checks{grid-template-columns:1fr}}
 .m-toolbar #ct-course,.m-toolbar #ac-course,.m-toolbar #ac-status{width:auto;min-width:220px;margin:0}
+.ct-lang{display:inline-flex;gap:4px;background:#eef0f3;border-radius:999px;padding:3px}
+.ct-lang button{width:auto;margin:0;border:0;background:transparent;color:var(--muted);font-size:13px;padding:5px 14px;border-radius:999px;cursor:pointer}
+.ct-lang button[aria-pressed="true"]{background:#13305f;color:#fff}
+.ct-bar{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:10px}
+.ct-en-note{font-size:12px;text-align:right;margin:-4px 0 10px}
+.ct-dlg-tools{display:flex;align-items:center;gap:8px}

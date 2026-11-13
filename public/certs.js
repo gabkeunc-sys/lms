@@ -4,15 +4,20 @@ const certStatus = c => !c ? ['미발급', 'op-a-auth'] : c.revoked_at ? ['취�
 const certD = d => d ? String(d).slice(0, 10).replace(/-/g, '.') : '-';
 const dday = d => { const n = Math.round((new Date(d + 'T00:00:00+09:00') - new Date(new Date(Date.now() + 9 * 36e5).toISOString().slice(0, 10) + 'T00:00:00+09:00')) / 864e5); return n > 0 ? `D-${n}` : n === 0 ? 'D-day' : '종료'; };
 
+const certLangToggle = lang => `<div class="ct-lang" role="group" aria-label="수료증 언어"><button type="button" data-lang="ko" aria-pressed="${lang === 'ko'}">국문</button><button type="button" data-lang="en" aria-pressed="${lang === 'en'}">영문</button></div>`;
+const certEnNote = c => !c.student_name_en || !c.course_title_en ? `<p class="ct-en-note muted">${!c.student_name_en ? '영문 이름이 없어 영문 수료증에 한글 이름이 들어갑니다. 「내 정보」에서 영문 이름을 입력할 수 있어요.' : '영문 과정명이 없어 영문 수료증에 한글 과정명이 들어갑니다.'}</p>` : '';
+function bindCertLang(root, onChange) { root.querySelectorAll('.ct-lang [data-lang]').forEach(b => b.onclick = () => { const lang = certLang(b.dataset.lang); root.querySelectorAll('.ct-lang [data-lang]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.lang === lang))); onChange(lang); }); }
 function certPreview(c, extra = '') {
+ let lang = certLang();
  const dlg = document.createElement('dialog'); dlg.className = 'student-dialog op-dialog ct-dialog';
- dlg.innerHTML = `<div class="ct-dlg-head"><div><h2>${escape(c.course_title)}</h2><p class="muted">${escape(c.student_name)} · ${escape(c.cert_no)}</p></div><button type="button" class="secondary ct-close">닫기</button></div><canvas class="ct-canvas" aria-label="수료증 미리보기"></canvas><div class="quick-actions">${extra}<button type="button" class="secondary ct-verify">검증 페이지</button><button type="button" class="secondary" data-dl="png">PNG 저장</button><button type="button" class="primary" data-dl="pdf">PDF 저장</button></div>`;
+ dlg.innerHTML = `<div class="ct-dlg-head"><div><h2>${escape(c.course_title)}</h2><p class="muted">${escape(c.student_name)} · ${escape(c.cert_no)}</p></div><div class="ct-dlg-tools">${certLangToggle(lang)}<button type="button" class="secondary ct-close">닫기</button></div></div><canvas class="ct-canvas" aria-label="수료증 미리보기"></canvas><div class="quick-actions">${extra}<button type="button" class="secondary ct-verify">검증 페이지</button><button type="button" class="secondary" data-dl="png">PNG 저장</button><button type="button" class="primary" data-dl="pdf">PDF 저장</button></div>`;
  document.body.append(dlg); dlg.showModal();
  dlg.querySelector('.ct-close').onclick = () => dlg.close();
  dlg.querySelector('.ct-verify').onclick = () => window.open('/verify/' + encodeURIComponent(c.cert_no), '_blank', 'noopener');
  dlg.addEventListener('close', () => dlg.remove());
- dlg.querySelectorAll('[data-dl]').forEach(b => b.onclick = async () => { b.disabled = true; try { await certDownload(c, b.dataset.dl); } finally { b.disabled = false; } });
- drawCertificate(dlg.querySelector('canvas'), c).catch(e => toast('수료증을 그리지 못했습니다: ' + e.message));
+ dlg.querySelectorAll('[data-dl]').forEach(b => b.onclick = async () => { b.disabled = true; try { await certDownload(c, b.dataset.dl, lang); } finally { b.disabled = false; } });
+ const draw = () => drawCertificate(dlg.querySelector('canvas'), c, lang).catch(e => toast('수료증을 그리지 못했습니다: ' + e.message));
+ bindCertLang(dlg, v => { lang = v; draw(); }); draw();
  return dlg;
 }
 
@@ -25,13 +30,14 @@ async function renderLearnCerts() {
   const check = (ok, label, sub) => `<li class="${ok ? 'ok' : ''}"><span aria-hidden="true">${ok ? '✓' : '○'}</span><div><b>${label}</b><small>${sub}</small></div></li>`;
   $('#main').innerHTML = lIntro('수료증', `${CERT_RULE(d.pass_average)} 발급된 수료증은 PDF(A4)와 이미지로 내려받을 수 있고, QR 코드로 누구나 진위를 확인할 수 있어요.`) +
    opKpis([['발급된 수료증', issued.length, issued.length ? '내려받기 가능' : ''], ['진행 중 과정', going.filter(c => !c.ended).length], ['수료 기준', `${d.pass_average}점`, '평균 이상 + 전 평가 응시']]) +
-   (issued.length ? `<div class="ct-grid">${issued.map((c, i) => `<section class="panel ct-card"><button type="button" class="ct-thumb" data-open="${i}" aria-label="${escape(c.title)} 수료증 크게 보기"><canvas data-i="${i}"></canvas></button><div class="ct-meta"><h3>${escape(c.title)}</h3><p class="muted">수료일 ${certD(c.certificate.completed_on)} · 성적 <b>${escape(c.certificate.grade)}</b> (${c.certificate.average})</p><code>${escape(c.certificate.cert_no)}</code><div class="quick-actions"><button type="button" class="secondary" data-dl="png" data-i="${i}">PNG</button><button type="button" class="primary" data-dl="pdf" data-i="${i}">PDF 저장</button></div></div></section>`).join('')}</div>`
+   (issued.length ? `<div class="ct-bar"><span class="muted">내려받을 수료증 언어</span>${certLangToggle(certLang())}</div>${certEnNote(issued[0].certificate)}<div class="ct-grid">${issued.map((c, i) => `<section class="panel ct-card"><button type="button" class="ct-thumb" data-open="${i}" aria-label="${escape(c.title)} 수료증 크게 보기"><canvas data-i="${i}"></canvas></button><div class="ct-meta"><h3>${escape(c.title)}</h3><p class="muted">수료일 ${certD(c.certificate.completed_on)} · 성적 <b>${escape(c.certificate.grade)}</b> (${c.certificate.average})</p><code>${escape(c.certificate.cert_no)}</code><div class="quick-actions"><button type="button" class="secondary" data-dl="png" data-i="${i}">PNG</button><button type="button" class="primary" data-dl="pdf" data-i="${i}">PDF 저장</button></div></div></section>`).join('')}</div>`
     : `<section class="panel ct-empty"><h2>아직 발급된 수료증이 없어요</h2><p class="muted">과정이 끝나고 수료 기준을 채우면 여기에 수료증이 생깁니다.</p></section>`) +
    (going.length ? `<section class="panel ct-progress"><h2>수료 진행 상황</h2>${going.map(c => `<div class="ct-row"><div class="ct-row-head"><b>${escape(c.title)}</b><small class="muted">${escape(c.start_date || '')} ~ ${escape(c.end_date || '')} · ${escape(c.instructor || '')}</small>${c.revoked ? '<span class="op-act op-a-warn">수료증 취소됨</span>' : `<span class="op-act ${c.took_all && c.passed ? 'op-a-grade' : 'op-a-auth'}">${c.took_all && c.passed ? (c.ended ? '수료 기준 충족' : '종료 후 자동 발급') : c.ended ? '수료 기준 미달' : '진행 중'}</span>`}</div><ul class="ct-checks">${check(c.ended, '과정 종료', c.ended ? `${certD(c.end_date)} 종료` : `${certD(c.end_date)} 종료 예정 · ${dday(c.end_date)}`)}${check(c.took_all, '모든 평가 응시', `${c.taken} / ${c.required}개`)}${check(c.passed, `평균 ${d.pass_average}점 이상`, `현재 ${c.average}점 · ${c.grade}`)}</ul></div>`).join('')}</section>` : '');
   const certs = issued.map(c => c.certificate);
-  $('#main').querySelectorAll('canvas[data-i]').forEach(cv => drawCertificate(cv, certs[cv.dataset.i]).catch(() => {}));
+  const drawAll = () => $('#main').querySelectorAll('canvas[data-i]').forEach(cv => drawCertificate(cv, certs[cv.dataset.i], certLang()).catch(() => {}));
+  drawAll(); bindCertLang($('#main'), drawAll);
   $('#main').querySelectorAll('[data-open]').forEach(b => b.onclick = () => certPreview(certs[b.dataset.open]));
-  $('#main').querySelectorAll('[data-dl]').forEach(b => b.onclick = async () => { b.disabled = true; try { await certDownload(certs[b.dataset.i], b.dataset.dl); } finally { b.disabled = false; } });
+  $('#main').querySelectorAll('[data-dl]').forEach(b => b.onclick = async () => { b.disabled = true; try { await certDownload(certs[b.dataset.i], b.dataset.dl, certLang()); } finally { b.disabled = false; } });
  } catch (e) { opFail(e); }
 }
 

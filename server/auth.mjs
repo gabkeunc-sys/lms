@@ -16,7 +16,7 @@ const scrypt = promisify(scryptCallback);
 import { NOW, nowPlus } from './db.mjs';
 const digest = value => createHash('sha256').update(value).digest('hex');
 const COOKIE = '__Host-lms_session';
-const publicUser = u => ({id:u.id,name:u.name,email:u.email,role:u.role,active:u.active,created_at:u.created_at});
+const publicUser = u => ({id:u.id,name:u.name,name_en:u.name_en||'',email:u.email,role:u.role,active:u.active,created_at:u.created_at});
 // PBKDF2-SHA256 through WebCrypto keeps login inside the Workers free-plan CPU budget (Workers caps iterations at 100000).
 // The iteration count is stored in each hash, so it can be changed later without breaking existing accounts.
 const MAX_ITERATIONS = 100000;
@@ -42,6 +42,7 @@ async function verify(password, stored) {
  const actual=await pbkdf2(password, valid?salt:'00'.repeat(16), valid?Number(count):iterations());
  return valid && timingSafeEqual(actual,Buffer.from(hash,'hex'));
 }
+const nameEn=v=>typeof v==='string'&&/^[A-Za-z][A-Za-z .,'-]{0,79}$/.test(v.trim())?v.trim():null;
 export function createHandler(db) {
  const query=(sql,params=[])=>db.query(sql,params);
  return async (request, context={}) => {
@@ -94,6 +95,13 @@ export function createHandler(db) {
     await logActivity(query,user.id,'auth.login',user.email,{role:user.role});
     return response({user:publicUser(user)},200,{'Set-Cookie':`${COOKIE}=${fresh}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=28800`});
    }
+   if(path==='/me/english-name' && method==='POST') {
+    if(!session) return fail('로그인이 필요합니다.',401);
+    const raw=typeof body.name_en==='string'?body.name_en.trim():'';
+    if(raw&&!nameEn(raw)) return fail('영문 이름은 영문자, 공백, 마침표, 하이픈만 80자까지 입력할 수 있습니다.');
+    await query('UPDATE app_users SET name_en=$1 WHERE id=$2',[raw||null,session.id]);
+    return response({user:publicUser({...session,name_en:raw})});
+   }
    if(path==='/me/password' && method==='POST') {
     if(!session) return fail('로그인이 필요합니다.',401);
     if(typeof body.currentPassword!=='string'||body.currentPassword.length>128||typeof body.password!=='string'||body.password.length<10||body.password.length>128) return fail('현재 비밀번호와 10~128자의 새 비밀번호를 입력하세요.');
@@ -130,7 +138,8 @@ export function createHandler(db) {
      if(!name||name.length>80) return fail('이름은 1~80자로 입력하세요.');
      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254) return fail('올바른 이메일을 입력하세요.');
      if(typeof body.password!=='string'||body.password.length<10||body.password.length>128) return fail('비밀번호는 10~128자로 입력하세요.');
-     const inserted=await query(`INSERT INTO app_users(id,name,email,password_hash) VALUES($1,$2,$3,$4) ON CONFLICT(email) DO NOTHING RETURNING id,name,email,role,active,created_at`,[randomUUID(),name,email,await hashPassword(body.password)]);
+     if(body.name_en&&!nameEn(body.name_en)) return fail('영문 이름은 영문자, 공백, 마침표, 하이픈만 입력할 수 있습니다.');
+     const inserted=await query(`INSERT INTO app_users(id,name,email,password_hash,name_en) VALUES($1,$2,$3,$4,$5) ON CONFLICT(email) DO NOTHING RETURNING id,name,email,role,active,created_at,name_en`,[randomUUID(),name,email,await hashPassword(body.password),nameEn(body.name_en)]);
      if(!inserted.rows.length) return fail('이미 등록된 이메일입니다.',409);
      return response({user:inserted.rows[0]},201);
     }
@@ -152,7 +161,7 @@ export function createHandler(db) {
      if(role){params.push(role);where+=' AND u.role=$2';}
      if(status)where+=status==='active'?' AND u.active=1':' AND u.active=0';
      const total=Number((await query(`SELECT count(*) AS count FROM app_users u WHERE ${where}`,params)).rows[0].count);
-     const users=(await query(`SELECT u.id,u.name,u.email,u.role,u.active,u.created_at,
+     const users=(await query(`SELECT u.id,u.name,u.name_en,u.email,u.role,u.active,u.created_at,
       (SELECT max(s.created_at) FROM app_sessions s WHERE s.user_id=u.id) AS last_login,
       CASE WHEN u.role='student' THEN (SELECT count(*) FROM courses c, json_each(c.student_ids) j WHERE j.value=u.id AND c.deleted_at IS NULL)
        ELSE (SELECT count(*) FROM courses c WHERE c.owner_id=u.id AND c.deleted_at IS NULL) END AS courses
@@ -168,7 +177,8 @@ export function createHandler(db) {
       if(!name||name.length>80) return fail('이름은 1~80자로 입력하세요.');
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254) return fail('올바른 이메일을 입력하세요.');
       try {
-       const result=await query(`UPDATE app_users SET name=$1,email=$2 WHERE id=$3 AND role='student' RETURNING id`,[name,email,match[1]]);
+       if(body.name_en&&!nameEn(body.name_en)) return fail('영문 이름은 영문자, 공백, 마침표, 하이픈만 입력할 수 있습니다.');
+       const result=await query(`UPDATE app_users SET name=$1,email=$2,name_en=$4 WHERE id=$3 AND role='student' RETURNING id`,[name,email,match[1],nameEn(body.name_en)]);
        if(!result.rows.length) return fail('학생 계정만 변경할 수 있습니다.',400);
        await query('DELETE FROM app_sessions WHERE user_id=$1',[match[1]]);
        return response({ok:true});

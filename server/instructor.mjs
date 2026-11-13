@@ -37,8 +37,9 @@ export async function instructorAPI({path,method,body,session,query,response,fai
   const ids=[...new Set(body.student_ids)];
   if(ids.length!==Number((await query("SELECT count(*) AS n FROM app_users WHERE id IN (SELECT value FROM json_each($1)) AND role='student' AND active=1",[JSON.stringify(ids)])).rows[0].n))return fail('활성 학생 계정만 배정할 수 있습니다.');
   if(body.id&&!await course(body.id))return fail('과정을 찾을 수 없습니다.',404);
-  const vals=[body.title.trim(),body.description,body.start_date||null,body.end_date||null,body.status,JSON.stringify(ids)];
-  const r=body.id?await query('UPDATE courses SET title=$1,description=$2,start_date=$3,end_date=$4,status=$5,student_ids=$6 WHERE id=$7 RETURNING *',[...vals,body.id]):await query('INSERT INTO courses(title,description,start_date,end_date,status,student_ids,id,owner_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[...vals,randomUUID(),session.id]);
+  const titleEn=typeof body.title_en==='string'&&body.title_en.trim()?body.title_en.trim().slice(0,160):null;
+  const vals=[body.title.trim(),body.description,body.start_date||null,body.end_date||null,body.status,JSON.stringify(ids),titleEn];
+  const r=body.id?await query('UPDATE courses SET title=$1,description=$2,start_date=$3,end_date=$4,status=$5,student_ids=$6,title_en=$7 WHERE id=$8 RETURNING *',[...vals,body.id]):await query('INSERT INTO courses(title,description,start_date,end_date,status,student_ids,title_en,id,owner_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',[...vals,randomUUID(),session.id]);
   await logActivity(query,session.id,body.id?'course.update':'course.create',body.title.trim(),{students:ids.length});
   return response({course:r.rows[0]});
  }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createTestDatabase} from './helpers/d1.mjs';
 import {createHandler} from '../server/auth.mjs';
 test('self password change requires current password and revokes all sessions',async()=>{
- const db=await createTestDatabase({migrations:['0001_schema.sql','0007_operations.sql','0008_teaching_tools.sql','0009_learning_tools.sql','0010_certificates.sql']});
+ const db=await createTestDatabase({migrations:['0001_schema.sql','0007_operations.sql','0008_teaching_tools.sql','0009_learning_tools.sql','0010_certificates.sql','0011_english_names.sql']});
  try {
  const handler=createHandler(db);
  const call=(path,body,cookie='')=>handler(new Request('https://lms.test/api'+path,{method:'POST',headers:{'content-type':'application/json',origin:'https://lms.test',cookie},body:JSON.stringify(body)}),{ip:'self-test'});
