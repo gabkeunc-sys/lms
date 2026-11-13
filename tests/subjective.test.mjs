@@ -1,8 +1,7 @@
-import {test} from 'node:test';import assert from 'node:assert/strict';import {PGlite} from '@electric-sql/pglite';import {readFile} from 'node:fs/promises';import {randomUUID} from 'node:crypto';import {createHandler} from '../server/auth.mjs';import {encryptKey,decryptKey,generate} from '../server/gemini.mjs';
+import {test} from 'node:test';import assert from 'node:assert/strict';import {createTestDatabase} from './helpers/d1.mjs';import {randomUUID} from 'node:crypto';import {createHandler} from '../server/auth.mjs';import {encryptKey,decryptKey,generate} from '../server/gemini.mjs';
 test('subjective exam lifecycle, hidden answers, secure API settings and review boundaries',async()=>{
- const db=new PGlite();const old=process.env.LMS_SETTINGS_KEY;process.env.LMS_SETTINGS_KEY='a'.repeat(64);
+ const db=await createTestDatabase({migrations:['0001_schema.sql']});const old=process.env.LMS_SETTINGS_KEY;process.env.LMS_SETTINGS_KEY='a'.repeat(64);
  try{
- for(const name of ['0001_auth.sql','0004_instructor.sql','0007_assessment_results.sql','0008_subjective.sql','0010_ai_provider.sql','0011_course_delete.sql']){let sql=await readFile(new URL('../netlify/database/migrations/'+name,import.meta.url),'utf8');if(name==='0007_assessment_results.sql')sql=sql.split('DO $results$')[0];await db.exec(sql);}
  const handler=createHandler(db),call=(path,cookie='',method='GET',body)=>handler(new Request('https://lms.test/api'+path,{method,headers:{cookie,origin:'https://lms.test','content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})}),{ip:randomUUID()});
  async function account(role,n){const body={name:n,email:n.toLowerCase()+'@example.com',password:'Password-2026-abc'};await call('/register','','POST',body);await db.query('UPDATE app_users SET role=$1 WHERE email=$2',[role,body.email]);const r=await call('/login','','POST',body);return {cookie:r.headers.get('set-cookie').split(';')[0],...(await r.json()).user};}
  const admin=await account('admin','Admin'),teacher=await account('instructor','Teacher'),student=await account('student','Student'),other=await account('instructor','Other');
@@ -46,5 +45,5 @@ test('subjective exam lifecycle, hidden answers, secure API settings and review 
  assert.equal((await call('/admin/ai',admin.cookie,'POST',{provider:'openai',model:'chosen-model',key:'new-provider-key-123456789',enabled:true})).status,200);const switched=(await db.query('SELECT * FROM ai_settings')).rows[0];assert.equal(switched.provider,'openai');assert.equal(decryptKey(switched.encrypted_key),'new-provider-key-123456789');
  const cipher=encryptKey('secret');assert.equal(decryptKey(cipher),'secret');await assert.rejects(generate(stored,{maxPoints:10},async()=>Response.json({candidates:[{content:{parts:[{text:'{"score":99,"feedback":"bad"}'}]}}]})));
  await assert.rejects(generate(stored,{maxPoints:10},async()=>new Response('{}',{status:429})),e=>e.status===429);
- }finally{if(old===undefined)delete process.env.LMS_SETTINGS_KEY;else process.env.LMS_SETTINGS_KEY=old;await db.close();}
+ }finally{if(old===undefined)delete process.env.LMS_SETTINGS_KEY;else process.env.LMS_SETTINGS_KEY=old;}
 });

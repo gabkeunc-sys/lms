@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {NOW,toTimestamp} from './db.mjs';
 const uuid=s=>typeof s==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(s);
 const text=(s,max)=>typeof s==='string'&&s.trim().length>0&&s.length<=max;
 export async function instructorAPI({path,method,body,session,query,response,fail}){
@@ -7,8 +8,10 @@ export async function instructorAPI({path,method,body,session,query,response,fai
   if(session.role!=='admin')return fail('관리자만 변경할 수 있습니다.',403);
   if(!uuid(body.id)||!['student','instructor'].includes(body.role))return fail('변경할 회원과 권한을 확인하세요.');
   if(body.role==='student'&&(await query('SELECT id FROM courses WHERE owner_id=$1 LIMIT 1',[body.id])).rows.length)return fail('담당 과정이 있는 강사의 권한은 변경할 수 없습니다.');
-  const r=await query(`WITH changed AS (UPDATE app_users SET role=$1 WHERE id=$2 AND role<>'admin' RETURNING id), revoked AS (DELETE FROM app_sessions WHERE user_id IN(SELECT id FROM changed)) SELECT id FROM changed`,[body.role,body.id]);
-  return r.rows.length?response({ok:true}):fail('변경할 회원을 찾을 수 없습니다.',404);
+  const r=await query(`UPDATE app_users SET role=$1 WHERE id=$2 AND role<>'admin' RETURNING id`,[body.role,body.id]);
+  if(!r.rows.length)return fail('변경할 회원을 찾을 수 없습니다.',404);
+  await query('DELETE FROM app_sessions WHERE user_id=$1',[body.id]);
+  return response({ok:true});
  }
  if(!['admin','instructor'].includes(session.role))return fail('강사만 접근할 수 있습니다.',403);
  const course=async id=>uuid(id)?(await query('SELECT * FROM courses WHERE id=$1 AND deleted_at IS NULL AND (owner_id=$2 OR $3=true)',[id,session.id,session.role==='admin'])).rows[0]:null;
@@ -16,10 +19,12 @@ export async function instructorAPI({path,method,body,session,query,response,fai
  const deletion=path.match(/^\/instructor\/courses\/([a-f0-9-]{36})\/(delete|restore)$/);
  if(deletion&&method==='POST'){
   const deleting=deletion[2]==='delete';
-  const result=await query(`WITH changed AS (UPDATE courses SET deleted_at=${deleting?'now()':'NULL'} WHERE id=$1 AND (owner_id=$2 OR $3=true) AND deleted_at IS ${deleting?'NULL':'NOT NULL'} RETURNING id), hidden AS (UPDATE assessments SET published=false WHERE course_id IN (SELECT id FROM changed) RETURNING id) SELECT id FROM changed`,[deletion[1],session.id,session.role==='admin']);
-  return result.rows.length?response({ok:true}):fail('과정을 찾을 수 없거나 상태가 변경되었습니다.',404);
+  const result=await query(`UPDATE courses SET deleted_at=${deleting?NOW:'NULL'} WHERE id=$1 AND (owner_id=$2 OR $3=true) AND deleted_at IS ${deleting?'NULL':'NOT NULL'} RETURNING id`,[deletion[1],session.id,session.role==='admin']);
+  if(!result.rows.length)return fail('과정을 찾을 수 없거나 상태가 변경되었습니다.',404);
+  await query('UPDATE assessments SET published=0 WHERE course_id=$1',[deletion[1]]);
+  return response({ok:true});
  }
- if(path==='/instructor/students'&&method==='GET')return response({users:(await query("SELECT id,name,email FROM app_users WHERE role='student' AND active=true ORDER BY name")).rows});
+ if(path==='/instructor/students'&&method==='GET')return response({users:(await query("SELECT id,name,email FROM app_users WHERE role='student' AND active=1 ORDER BY name")).rows});
  if(path==='/instructor/courses'&&method==='GET')return response({courses:(await query('SELECT * FROM courses WHERE deleted_at IS NULL AND (owner_id=$1 OR $2=true) ORDER BY created_at DESC',[session.id,session.role==='admin'])).rows});
  if(path==='/instructor/courses'&&method==='POST'){
   if(!text(body.title,160)||typeof body.description!=='string'||body.description.length>4000||!['preparing','active','ended'].includes(body.status))return fail('과정명, 설명, 운영 상태를 확인하세요.');
@@ -27,13 +32,13 @@ export async function instructorAPI({path,method,body,session,query,response,fai
   if(body.start_date&&body.end_date&&body.start_date>body.end_date)return fail('종료일은 시작일 이후여야 합니다.');
   if(!Array.isArray(body.student_ids)||body.student_ids.length>500||!body.student_ids.every(uuid))return fail('수강생 선택을 확인하세요.');
   const ids=[...new Set(body.student_ids)];
-  if(ids.length!==Number((await query("SELECT count(*) AS n FROM app_users WHERE id=ANY($1::uuid[]) AND role='student' AND active=true",[ids])).rows[0].n))return fail('활성 학생 계정만 배정할 수 있습니다.');
+  if(ids.length!==Number((await query("SELECT count(*) AS n FROM app_users WHERE id IN (SELECT value FROM json_each($1)) AND role='student' AND active=1",[JSON.stringify(ids)])).rows[0].n))return fail('활성 학생 계정만 배정할 수 있습니다.');
   if(body.id&&!await course(body.id))return fail('과정을 찾을 수 없습니다.',404);
   const vals=[body.title.trim(),body.description,body.start_date||null,body.end_date||null,body.status,JSON.stringify(ids)];
   const r=body.id?await query('UPDATE courses SET title=$1,description=$2,start_date=$3,end_date=$4,status=$5,student_ids=$6 WHERE id=$7 RETURNING *',[...vals,body.id]):await query('INSERT INTO courses(title,description,start_date,end_date,status,student_ids,id,owner_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[...vals,randomUUID(),session.id]);
   return response({course:r.rows[0]});
  }
- if(path==='/instructor/assessments'&&method==='GET')return response({assessments:(await query('SELECT a.*,c.title AS course_title,(SELECT count(*)::integer FROM assessment_results r WHERE r.assessment_id=a.id) AS result_count FROM assessments a JOIN courses c ON c.id=a.course_id WHERE c.deleted_at IS NULL AND (c.owner_id=$1 OR $2=true) ORDER BY a.created_at DESC',[session.id,session.role==='admin'])).rows});
+ if(path==='/instructor/assessments'&&method==='GET')return response({assessments:(await query('SELECT a.*,c.title AS course_title,(SELECT count(*) FROM assessment_results r WHERE r.assessment_id=a.id) AS result_count FROM assessments a JOIN courses c ON c.id=a.course_id WHERE c.deleted_at IS NULL AND (c.owner_id=$1 OR $2=true) ORDER BY a.created_at DESC',[session.id,session.role==='admin'])).rows});
  if(path==='/instructor/assessments'&&method==='POST'){
   if(!await course(body.course_id))return fail('담당 과정을 선택하세요.',403);
   if(!text(body.title,160)||!['exam','quiz'].includes(body.kind)||!Number.isInteger(body.week)||body.week<1||body.week>100||!Number.isInteger(body.duration)||body.duration<1||body.duration>240)return fail('평가 제목, 주차, 제한 시간을 확인하세요.');
@@ -60,7 +65,7 @@ export async function instructorAPI({path,method,body,session,query,response,fai
    if((await query('SELECT assessment_id FROM assessment_attempts WHERE assessment_id=$1 LIMIT 1',[body.id])).rows.length)return fail('응시가 시작된 시험은 수정할 수 없습니다.',409);
   }
   if(body.id&&(await query('SELECT id FROM assessment_results WHERE assessment_id=$1 LIMIT 1',[body.id])).rows.length)return fail('응시 결과가 있는 시험은 수정할 수 없습니다. 새 시험을 작성하세요.',409);
-  const vals=[body.course_id,body.title.trim(),body.kind,body.week,body.duration,body.opens_at||null,body.closes_at||null,JSON.stringify(questions)];
+  const vals=[body.course_id,body.title.trim(),body.kind,body.week,body.duration,toTimestamp(body.opens_at),toTimestamp(body.closes_at),JSON.stringify(questions)];
   const r=body.id?await query('UPDATE assessments SET course_id=$1,title=$2,kind=$3,week=$4,duration=$5,opens_at=$6,closes_at=$7,questions=$8 WHERE id=$9 RETURNING *',[...vals,body.id]):await query('INSERT INTO assessments(course_id,title,kind,week,duration,opens_at,closes_at,questions,id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',[...vals,randomUUID()]);
   return response({assessment:r.rows[0]});
  }

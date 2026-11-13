@@ -1,12 +1,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
-import {PGlite} from '@electric-sql/pglite';
+import {createTestDatabase} from './helpers/d1.mjs';
 import {createHandler} from '../server/auth.mjs';
 test('self password change requires current password and revokes all sessions',async()=>{
- const db=new PGlite();
+ const db=await createTestDatabase({migrations:['0001_schema.sql']});
  try {
- await db.exec(await readFile(new URL('../netlify/database/migrations/0001_auth.sql',import.meta.url),'utf8'));
  const handler=createHandler(db);
  const call=(path,body,cookie='')=>handler(new Request('https://lms.test/api'+path,{method:'POST',headers:{'content-type':'application/json',origin:'https://lms.test',cookie},body:JSON.stringify(body)}),{ip:'self-test'});
  const account={name:'Password test',email:'self@example.com',password:'Original-test-2026'};
@@ -23,5 +21,5 @@ test('self password change requires current password and revokes all sessions',a
  assert.equal((await db.query('SELECT * FROM app_sessions')).rows.length,0);
  assert.equal((await call('/login',account)).status,401);
  assert.equal((await call('/login',{...account,password:change.password})).status,200);
- } finally {await db.close();}
+ } finally {}
 });

@@ -1,11 +1,9 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
-import {PGlite} from '@electric-sql/pglite';
+import {createTestDatabase} from './helpers/d1.mjs';
 import {createHandler} from '../server/auth.mjs';
 test('PostgreSQL authentication and authorization lifecycle',async()=>{
- const db=new PGlite();
- await db.exec(await readFile(new URL('../netlify/database/migrations/0001_auth.sql',import.meta.url),'utf8'));
+ const db=await createTestDatabase({migrations:['0001_schema.sql']});
  const handler=createHandler(db);
  const call=(path,method='GET',body, cookie='',origin='https://lms.test')=>handler(new Request('https://lms.test/api'+path,{method,headers:{'content-type':'application/json',origin,cookie},...(body?{body:JSON.stringify(body)}:{})}),{ip:'test-ip'});
  const account={email:'student@example.com',name:'학생 <script>',password:'A-long-test-password'};
@@ -38,16 +36,14 @@ test('PostgreSQL authentication and authorization lifecycle',async()=>{
  assert.equal((await call('/admin/users/'+aid,'PATCH',{active:false},adminCookie)).status,400);
  res=await call('/admin/users?q=student','GET',null,adminCookie);assert.equal((await res.json()).total,1);
  res=await call('/login','POST',admin);const expiryCookie=res.headers.get('set-cookie').split(';')[0];
- await db.query("UPDATE app_sessions SET expires_at=now()-interval '1 hour'");
+ await db.query("UPDATE app_sessions SET expires_at=strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 hour')");
  assert.equal((await call('/me','GET',null,expiryCookie)).status,401);
  await db.query('DELETE FROM auth_limits');
  for(let i=0;i<12;i++)assert.equal((await call('/login','POST',{...account,password:'incorrect-password'})).status,401);
  assert.equal((await call('/login','POST',account)).status,429);
- await db.close();
 });
 test('administrator student creation, editing, reset and permission boundaries',async()=>{
- const db=new PGlite();
- await db.exec(await readFile(new URL('../netlify/database/migrations/0001_auth.sql',import.meta.url),'utf8'));
+ const db=await createTestDatabase({migrations:['0001_schema.sql']});
  const handler=createHandler(db);
  const call=(path,method='GET',body,cookie='')=>handler(new Request('https://lms.test/api'+path,{method,headers:{'content-type':'application/json',origin:'https://lms.test',cookie},...(body?{body:JSON.stringify(body)}:{})}),{ip:'admin-test'});
  const owner={name:'Teacher',email:'owner@example.com',password:'Owner-password-2026'};
@@ -74,5 +70,4 @@ test('administrator student creation, editing, reset and permission boundaries',
  const ownerId=(await db.query('SELECT id FROM app_users WHERE email=$1',[owner.email])).rows[0].id;
  assert.equal((await call('/admin/users/'+ownerId+'/password','POST',{password:'Replacement-2026'},ac)).status,400);
  assert.equal((await call('/admin/users/'+ownerId,'PATCH',{name:'Changed',email:'changed@example.com'},ac)).status,400);
- await db.close();
 });

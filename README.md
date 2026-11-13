@@ -1,6 +1,6 @@
 # 배움길 LMS
 
-회원가입·로그인과 관리자/학생 화면을 구분한 최소 학습관리 서비스입니다.
+회원가입·로그인과 관리자/강사/학생 화면을 구분한 최소 학습관리 서비스입니다. Cloudflare Workers와 D1에서 동작합니다. (이전 Netlify 버전: `learning-path-lms` 저장소)
 
 ## 구현 범위
 - 이메일/비밀번호 회원가입(모두 학생), 로그인, 로그아웃
@@ -10,31 +10,36 @@
 - 시험·미니퀴즈·과제·AI 기능은 후속 개발 범위입니다.
 
 ## 구조
-- `public/`: HTML/CSS/JavaScript 화면
-- `server/auth.mjs`: 검증 가능한 API 구현
-- `netlify/functions/api.mjs`: Netlify Functions 진입점
-- `netlify/database/migrations/0001_auth.sql`: PostgreSQL 스키마
-- `tests/auth.test.mjs`: PGlite(PostgreSQL) 기반 인증/권한 통합 검증
+- `public/`: HTML/CSS/JavaScript 화면 (`public/_headers`: 보안 헤더)
+- `src/worker.mjs`: Cloudflare Workers 진입점 (`/api/*`는 API, 나머지는 정적 화면)
+- `server/*.mjs`: API 구현, `server/db.mjs`: D1(SQLite) 어댑터
+- `migrations/0001_schema.sql`: D1 스키마, `migrations/0002_demo_data.sql`: 데모 과정·시험·성적
+- `tests/`: Node 내장 SQLite로 D1을 대신하는 통합 검증 (`tests/helpers/d1.mjs`)
+- `wrangler.jsonc`: Workers·D1 설정
 
-## 배포
-1. Netlify에서 이 GitHub 저장소의 `main`을 연결합니다.
-2. `netlify.toml`의 build command(`npm test`), publish(`public`), functions 설정을 사용합니다.
-3. `@netlify/database`가 설치되어 있어 Netlify Database 생성과 SQL migration이 배포에 통합됩니다. 계정에서 자동 생성되지 않으면 프로젝트의 Data & Storage > Database에서 생성합니다. Credit-based 플랜이 필요합니다.
-4. DB 접속 문자열은 Netlify에서 관리합니다. 비밀값은 저장소에 올리지 않습니다.
-5. 게시 후 회원가입/로그인/관리자 접근/로그아웃을 확인합니다.
-6. 이후 `main` 변경은 Netlify 자동 배포로 이어집니다.
+## 배포 (Cloudflare Workers 무료 플랜 + D1)
+1. `npm ci` 후 `npx wrangler login` (또는 `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` 환경 변수).
+2. `npx wrangler d1 create lms`로 DB를 만들고 출력된 `database_id`를 `wrangler.jsonc`에 넣습니다.
+3. `npm run db:migrate`로 스키마와 데모 데이터를 적용합니다.
+4. `openssl rand -hex 32` 값으로 `npx wrangler secret put LMS_SETTINGS_KEY`를 등록합니다.
+5. `npm run deploy`로 배포합니다. 주소는 `https://lms.<계정 하위 도메인>.workers.dev`입니다.
+6. 로컬 확인: `.dev.vars`에 `LMS_SETTINGS_KEY=...`를 두고 `npm run db:migrate:local && npm run dev`.
 
 ## 초기 관리자 설정
-공개 회원가입은 관리자 권한을 부여하지 않습니다. 운영자가 사이트에 직접 가입한 다음, Netlify Database 관리 화면에서 해당 행의 ID와 이메일을 확인하고 그 **확인된 ID**에 한해 `role`을 `admin`으로 변경합니다. 이메일 문자열만 일치한다고 자동 승격하지 않습니다. 운영자 본인이 가입했는지 확인하기 전에는 승격하지 마세요.
+공개 회원가입은 관리자 권한을 부여하지 않습니다. 운영자가 사이트에 직접 가입한 다음, 가입한 행의 ID와 이메일을 확인하고 그 **확인된 ID**에 한해 다음처럼 `role`을 `admin`으로 변경합니다.
+`npx wrangler d1 execute lms --remote --command "UPDATE app_users SET role='admin' WHERE id='<확인된 ID>'"`
+이메일 문자열만 일치한다고 자동 승격하지 않습니다.
+
+데모 계정(`student01~10@example.com`, 강사 `조현우`)은 비밀번호가 비활성화된 상태로 들어갑니다. 사용하려면 관리자가 회원 관리에서 비밀번호를 초기화합니다(학생 계정). 강사 데모 계정은 D1에서 직접 비밀번호 해시를 설정해야 합니다.
 
 ## 보안
-비밀번호는 무작위 salt와 scrypt로 해시합니다. 8시간 세션의 원문 토큰은 Secure/HttpOnly/SameSite 쿠키에만 저장하고 DB에는 SHA-256 해시를 저장합니다. 변경 API는 동일 출처와 JSON을 확인합니다. DB에 저장한 IP/이메일 해시 기반 요청 제한, 파라미터 쿼리, 서버 권한 검사를 사용합니다. 비활성화와 로그아웃은 세션을 폐기합니다. 관리자 계정은 이 UI에서 비활성화할 수 없습니다.
+비밀번호는 무작위 salt와 PBKDF2-SHA256(WebCrypto, 기본 100,000회)으로 해시합니다. 반복 횟수는 해시에 함께 저장되므로 `PBKDF2_ITERATIONS` 변수로 바꿔도 기존 계정은 그대로 로그인됩니다. Workers 무료 플랜의 요청당 CPU 한도(10ms) 때문에 scrypt 대신 사용합니다. 8시간 세션의 원문 토큰은 Secure/HttpOnly/SameSite 쿠키에만 저장하고 DB에는 SHA-256 해시를 저장합니다. 변경 API는 동일 출처와 JSON을 확인합니다. DB에 저장한 IP(`CF-Connecting-IP`)/이메일 해시 기반 요청 제한, 파라미터 쿼리, 서버 권한 검사를 사용합니다. 비활성화와 로그아웃은 세션을 폐기합니다. 관리자 계정은 이 UI에서 비활성화할 수 없습니다.
 
 이메일 소유 확인과 MFA는 제공하지 않습니다. 관리자는 회원 비밀번호를 초기화할 수 있으며, 회원은 현재 비밀번호를 확인한 뒤 직접 변경할 수 있습니다. 계정 복구는 담당 강사에게 문의하세요.
 
 ## 검증
 Node.js 22 이상에서 `npm ci && npm test` 및 `npm run check`.
-테스트 데이터는 메모리 PostgreSQL에만 기록되며 배포 DB에는 영향을 주지 않습니다.
+테스트 데이터는 메모리 SQLite에만 기록되며 배포 DB에는 영향을 주지 않습니다.
 
 
 ## 강사 기능 (2026-11-12)
@@ -42,11 +47,11 @@ Node.js 22 이상에서 `npm ci && npm test` 및 `npm run check`.
 
 내 과정에서 과정명·학습 목표·기간·운영 상태·수강생을 저장합니다. 시험·미니퀴즈에서는 평가 기본 정보와 객관식 4개 보기, 정답, 배점, 개념 태그, 해설을 입력하고 초안을 저장합니다. 학생 화면 미리보기는 제출되지 않으며 정답과 해설을 표시하지 않습니다. 초안에는 미완성 문항을 저장할 수 있으나 미리보기는 제목·문제·보기·배점 입력을 요구합니다.
 
-현재 범위는 과정 관리·출제·초안 저장·미리보기입니다. 공개·실제 응시·자동채점·성적·학습 지도·과제 관리는 아직 제공하지 않습니다. 새 DB 스키마는 `0004_instructor.sql`이며 기존 사용자 데이터를 보존합니다.
+현재 범위는 과정 관리·출제·초안 저장·미리보기입니다. 공개·실제 응시·자동채점·성적·학습 지도·과제 관리는 아직 제공하지 않습니다. 
 
 ## 주관식 평가와 AI 채점
 
-관리자 `AI 채점 설정`에서 공급자(Google Gemini·OpenAI·Anthropic Claude), API 키, 모델 ID, 활성 상태를 저장하고 연결을 확인합니다. 키는 AES-256-GCM으로 암호화하며 Netlify production secret `LMS_SETTINGS_KEY`(32바이트 무작위 값의 64자리 hex)가 필요합니다. 이 암호화 키는 삭제하거나 교체하면 기존 API 키를 복호화할 수 없으므로 관리해야 합니다. 키 원문은 API 응답 및 로그에 반환하지 않습니다. 비용과 실제 한도는 선택한 공급자의 계정 설정을 따릅니다. 공급자 변경 시 새 키를 입력해야 하며 기존 키가 다른 공급자로 전송되지 않습니다. 활성 공급자의 설정 한 세트를 보관합니다.
+관리자 `AI 채점 설정`에서 공급자(Google Gemini·OpenAI·Anthropic Claude), API 키, 모델 ID, 활성 상태를 저장하고 연결을 확인합니다. 키는 AES-256-GCM으로 암호화하며 Workers secret `LMS_SETTINGS_KEY`(32바이트 무작위 값의 64자리 hex)가 필요합니다. 이 암호화 키는 삭제하거나 교체하면 기존 API 키를 복호화할 수 없으므로 관리해야 합니다. 키 원문은 API 응답 및 로그에 반환하지 않습니다. 비용과 실제 한도는 선택한 공급자의 계정 설정을 따릅니다. 공급자 변경 시 새 키를 입력해야 하며 기존 키가 다른 공급자로 전송되지 않습니다. 활성 공급자의 설정 한 세트를 보관합니다.
 
 강사는 객관식 또는 주관식 문항, 모범답안, 채점 기준과 배점을 등록하고 시험을 공개합니다. 학생은 배정된 과정의 공개 시험에 응시하고 답안을 제출합니다. 시작 시각과 제출 중복은 서버에서 검사합니다. 제한 시간 종료 시 열린 응시 화면에서 자동 제출을 시도합니다. 응시가 시작된 시험은 수정할 수 없습니다.
 

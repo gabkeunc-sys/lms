@@ -1,13 +1,11 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
-import {PGlite} from '@electric-sql/pglite';
+import {createTestDatabase} from './helpers/d1.mjs';
 import {createHandler} from '../server/auth.mjs';
 import {randomUUID} from 'node:crypto';
-const migration=async name=>await readFile(new URL('../netlify/database/migrations/'+name,import.meta.url),'utf8');
 test('instructor course ownership, role boundaries, assessment answers and persistence',async()=>{
- const db=new PGlite();try{
- await db.exec(await migration('0001_auth.sql'));await db.exec(await migration('0004_instructor.sql'));await db.exec((await migration('0007_assessment_results.sql')).split('DO $results$')[0]);await db.exec(await migration('0008_subjective.sql'));await db.exec(await migration('0011_course_delete.sql'));const handler=createHandler(db);
+ const db=await createTestDatabase({migrations:['0001_schema.sql']});try{
+const handler=createHandler(db);
  const call=(path,method='GET',body,cookie='')=>handler(new Request('https://lms.test/api'+path,{method,headers:{origin:'https://lms.test','content-type':'application/json',cookie},...(body?{body:JSON.stringify(body)}:{})}),{ip:randomUUID()});
  async function account(role,email){const a={name:role,email,password:'Password-test-2026'};await call('/register','POST',a);await db.query('UPDATE app_users SET role=$1 WHERE email=$2',[role,email]);const r=await call('/login','POST',a);return {cookie:r.headers.get('set-cookie').split(';')[0],user:(await r.json()).user};}
  const admin=await account('admin','admin@example.com'),teacher=await account('instructor','teacher@example.com'),other=await account('instructor','other@example.com'),student=await account('student','student@example.com');
@@ -29,5 +27,5 @@ test('instructor course ownership, role boundaries, assessment answers and persi
  assert.equal((await call('/admin/role','PATCH',{id:teacher.user.id,role:'student'},admin.cookie)).status,400);
  assert.equal((await call('/admin/role','PATCH',{id:student.user.id,role:'instructor'},admin.cookie)).status,200);
  assert.equal((await call('/me','GET',null,student.cookie)).status,401);
- }finally{await db.close();}
+ }finally{}
 });

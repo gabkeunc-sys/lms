@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {generate} from './ai.mjs';
+import {NOW,nowPlus} from './db.mjs';
 const isText=q=>q.type==='text';
 const safeQuestions=qs=>qs.map(q=>({type:q.type||'choice',prompt:q.prompt,points:q.points,tag:q.tag,...(!isText(q)?{options:q.options}:{})}));
 export async function assessmentAPI({path,method,body,session,query,response,fail}){
@@ -8,7 +9,7 @@ export async function assessmentAPI({path,method,body,session,query,response,fai
  if(teacher&&!['admin','instructor'].includes(session.role))return fail('강사만 접근할 수 있습니다.',403);
  if(!teacher&&session.role!=='student')return fail('학생 계정으로 응시하세요.',403);
  const match=path.match(/^\/(?:instructor|student)\/(assessments|results)\/([a-f0-9-]{36})(?:\/(start|submit|publish|analyze|confirm))?$/);
- if(path==='/student/assessments'&&method==='GET')return response({assessments:(await query(`SELECT a.id,a.title,a.kind,a.week,a.duration,a.opens_at,a.closes_at,c.title AS course_title,r.id AS result_id FROM assessments a JOIN courses c ON c.id=a.course_id LEFT JOIN assessment_results r ON r.assessment_id=a.id AND r.student_id=$1 WHERE c.deleted_at IS NULL AND a.published=true AND c.student_ids @> $2::jsonb ORDER BY a.created_at DESC`,[session.id,JSON.stringify([session.id])])).rows});
+ if(path==='/student/assessments'&&method==='GET')return response({assessments:(await query(`SELECT a.id,a.title,a.kind,a.week,a.duration,a.opens_at,a.closes_at,c.title AS course_title,r.id AS result_id FROM assessments a JOIN courses c ON c.id=a.course_id LEFT JOIN assessment_results r ON r.assessment_id=a.id AND r.student_id=$1 WHERE c.deleted_at IS NULL AND a.published=1 AND EXISTS(SELECT 1 FROM json_each(c.student_ids) WHERE value=$1) ORDER BY a.created_at DESC`,[session.id])).rows});
  if(!match)return fail('요청을 찾을 수 없습니다.',404);
  const [,resource,id,action]=match;
  if(resource==='results'){
@@ -23,7 +24,7 @@ export async function assessmentAPI({path,method,body,session,query,response,fai
    if(body.privacyChecked!==true||typeof body.answer!=='string'||body.answer.length>10000)return fail('전송할 답안에서 개인정보를 확인하세요.');
    const setting=(await query('SELECT * FROM ai_settings WHERE id=1 AND enabled=true')).rows[0];if(!setting)return fail('관리자가 AI 채점 API를 등록하고 활성화해야 합니다.',503);
    // One project-wide request at a time window; failed requests do not overwrite saved grading.
-   const limit=await query("INSERT INTO auth_limits(key,hits,expires_at) VALUES('ai-grading',1,now()+interval '10 seconds') ON CONFLICT(key) DO UPDATE SET hits=1,expires_at=now()+interval '10 seconds' WHERE auth_limits.expires_at<now() RETURNING hits");
+   const limit=await query(`INSERT INTO auth_limits(key,hits,expires_at) VALUES('ai-grading',1,${nowPlus('+10 seconds')}) ON CONFLICT(key) DO UPDATE SET hits=1,expires_at=${nowPlus('+10 seconds')} WHERE auth_limits.expires_at<${NOW} RETURNING hits`);
    if(!limit.rows.length)return fail('분석 요청을 처리 중입니다. 10초 후 다시 시도하세요.',429);
    const redact=s=>s.replaceAll(r.email,'[이메일 제외]').replaceAll(r.name,'[이름 제외]').replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,'[이메일 제외]').replace(/01[016789][- ]?\d{3,4}[- ]?\d{4}/g,'[연락처 제외]');
    let proposed;try{proposed=await generate(setting,{question:redact(q.prompt),exemplar:redact(q.model_answer),rubric:redact(q.rubric),answer:redact(body.answer),maxPoints:q.points});}catch(e){return fail(e.message,e.status||502);}

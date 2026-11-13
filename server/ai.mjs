@@ -1,4 +1,5 @@
 import {createCipheriv,createDecipheriv,randomBytes} from 'node:crypto';
+import {NOW} from './db.mjs';
 function master(){const key=process.env.LMS_SETTINGS_KEY;if(!key||!/^[a-f0-9]{64}$/i.test(key))throw new Error('서버의 API 키 암호화 설정이 필요합니다.');return Buffer.from(key,'hex');}
 export function encryptKey(value){const iv=randomBytes(12),c=createCipheriv('aes-256-gcm',master(),iv);return [iv.toString('hex'),Buffer.concat([c.update(value,'utf8'),c.final()]).toString('hex'),c.getAuthTag().toString('hex')].join(':');}
 export function decryptKey(value){const [iv,data,tag]=value.split(':'),c=createDecipheriv('aes-256-gcm',master(),Buffer.from(iv,'hex'));c.setAuthTag(Buffer.from(tag,'hex'));return Buffer.concat([c.update(Buffer.from(data,'hex')),c.final()]).toString('utf8');}
@@ -50,5 +51,5 @@ export async function settingsAPI({path,method,body,session,query,response,fail}
  if(body.key!==undefined&&(typeof body.key!=='string'||body.key.length>1024||body.key.length<20))return fail('API 키를 확인하세요.');
  let encrypted=setting?.encrypted_key;try{if(body.key)encrypted=encryptKey(body.key);}catch(e){return fail(e.message,503);}
  if(!encrypted)return fail('API 키를 입력하세요.');
- await query('INSERT INTO ai_settings(id,encrypted_key,model,enabled,provider) VALUES(1,$1,$2,$3,$4) ON CONFLICT(id) DO UPDATE SET encrypted_key=$1,model=$2,enabled=$3,provider=$4,updated_at=now()',[encrypted,body.model,body.enabled,provider]);return response({ok:true});
+ await query(`INSERT INTO ai_settings(id,encrypted_key,model,enabled,provider) VALUES(1,$1,$2,$3,$4) ON CONFLICT(id) DO UPDATE SET encrypted_key=$1,model=$2,enabled=$3,provider=$4,updated_at=${NOW}`,[encrypted,body.model,body.enabled,provider]);return response({ok:true});
 }
