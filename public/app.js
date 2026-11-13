@@ -13,8 +13,8 @@ async function api(path,options={}){
  if(!response.ok){const e=new Error(data.error||'요청을 처리하지 못했습니다.');e.status=response.status;throw e;}return data;
 }
 function toast(text){$('#toast').textContent=text;$('#toast').hidden=false;setTimeout(()=>$('#toast').hidden=true,3500);}
-const menuLabels={home:'나의 학습 공간',assessments:'시험·미니퀴즈',grades:'성적 대시보드',guidance:'학습 방향',assignments:'과제',profile:'내 정보',password:'비밀번호 변경',dashboard:'운영 현황',members:'회원 관리','ai-settings':'AI 채점 설정'};
-const ICONS={dashboard:'M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z',home:'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',assessments:'M9 4h6M8 3h8v4H8zM6 5H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1M8 12h8M8 16h5',grades:'M4 20V10M10 20V4M16 20v-7M22 20H2',guidance:'M12 2l3 7 7 .5-5.5 4.5L18 21l-6-3.8L6 21l1.5-7L2 9.5 9 9z',assignments:'M4 4h16v16H4zM8 9h8M8 13h8M8 17h4',members:'M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M22 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8','ai-settings':'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2','teach-home':'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',courses:'M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2zM4 21V5M8 7h8',exams:'M9 4h6M8 3h8v4H8zM6 5H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1M8 12h8M8 16h5',results:'M9 11l3 3 8-8M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11','teach-guidance':'M12 2l3 7 7 .5-5.5 4.5L18 21l-6-3.8L6 21l1.5-7L2 9.5 9 9z'};
+const menuLabels={home:'나의 학습 공간',assessments:'시험·미니퀴즈',grades:'성적 대시보드',path:'러닝 패스',guidance:'학습 방향',assignments:'과제',profile:'내 정보',password:'비밀번호 변경',dashboard:'운영 현황',members:'회원 관리','ai-settings':'AI 채점 설정'};
+const ICONS={dashboard:'M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z',home:'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',assessments:'M9 4h6M8 3h8v4H8zM6 5H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1M8 12h8M8 16h5',grades:'M4 20V10M10 20V4M16 20v-7M22 20H2',path:'M5 6a2 2 0 1 0 0 .01M19 18a2 2 0 1 0 0 .01M7 6h6a3 3 0 0 1 0 6h-2a3 3 0 0 0 0 6h6',guidance:'M12 2l3 7 7 .5-5.5 4.5L18 21l-6-3.8L6 21l1.5-7L2 9.5 9 9z',assignments:'M4 4h16v16H4zM8 9h8M8 13h8M8 17h4',members:'M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M22 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8','ai-settings':'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2','teach-home':'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',courses:'M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2zM4 21V5M8 7h8',exams:'M9 4h6M8 3h8v4H8zM6 5H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1M8 12h8M8 16h5',results:'M9 11l3 3 8-8M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11','teach-guidance':'M12 2l3 7 7 .5-5.5 4.5L18 21l-6-3.8L6 21l1.5-7L2 9.5 9 9z'};
 const navIcon=key=>`<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[key]||ICONS.home}"/></svg>`;
 async function loadNavCounts(teaching){
  const set=(key,n)=>{const el=document.querySelector(`[data-count="${key}"]`);if(el){el.textContent=n;el.hidden=!n;}};
@@ -24,7 +24,7 @@ async function loadNavCounts(teaching){
  }catch{}
 }
 // URL routing: every screen has its own path, so refresh and back/forward keep the current screen.
-const ROUTES={dashboard:'/admin',members:'/admin/members','ai-settings':'/admin/ai-settings','teach-home':'/teach',courses:'/teach/courses',exams:'/teach/exams',results:'/teach/results','teach-guidance':'/teach/guidance',home:'/learn',assessments:'/learn/assessments',grades:'/learn/grades',guidance:'/learn/guidance',assignments:'/learn/assignments',profile:'/account',password:'/account/password',login:'/login',register:'/register'};
+const ROUTES={dashboard:'/admin',members:'/admin/members','ai-settings':'/admin/ai-settings','teach-home':'/teach',courses:'/teach/courses',exams:'/teach/exams',results:'/teach/results','teach-guidance':'/teach/guidance',home:'/learn',assessments:'/learn/assessments',grades:'/learn/grades',path:'/learn/path',guidance:'/learn/guidance',assignments:'/learn/assignments',profile:'/account',password:'/account/password',login:'/login',register:'/register'};
 const PATH_VIEWS=Object.fromEntries(Object.entries(ROUTES).map(([k,v])=>[v,k]));
 const currentTarget=()=>PATH_VIEWS[location.pathname.replace(/\/+$/,'')]||'';
 function navigate(target,{replace=false}={}){const path=ROUTES[target]||'/';if(location.pathname!==path)history[replace?'replaceState':'pushState']({},'',path);routeUser();}
@@ -42,7 +42,7 @@ function routeUser(){
  const target=currentTarget();
  if(['admin','instructor'].includes(user.role)&&Object.hasOwn(teacherLabels,target)){view=target;return teacherPage();}
  if(user.role==='instructor'&&!Object.hasOwn(menuLabels,target)){view='teach-home';return teacherPage();}
- const learnerOnly=['home','assessments','grades','guidance','assignments'];
+ const learnerOnly=['home','assessments','grades','path','guidance','assignments'];
  view=Object.hasOwn(menuLabels,target)&&!(['dashboard','members','ai-settings'].includes(target)&&user.role!=='admin')&&!(user.role==='admin'&&learnerOnly.includes(target))?target:(user.role==='admin'?'dashboard':'home');
  if(view==='ai-settings'){if(user.role!=='admin'){view='home';return renderHome();}return renderAISettings();}
  if(view==='dashboard')return renderAdminDashboard();
@@ -53,12 +53,13 @@ function routeUser(){
  if(view==='assessments')return renderAvailableAssessments();
  if(view==='guidance')return renderStudentGuidance();
  if(view==='grades')return renderStudentDashboard();
+ if(view==='path')return renderStudentPath();
  renderLearningPage();
 }
 function shell(){
  document.body.classList.toggle('public-page',!user);document.body.classList.remove('landing-page');
  const teaching=user&&(user.role==='instructor'||(user.role==='admin'&&Object.hasOwn(teacherLabels,view)));
- const menus=teaching?['teach-home','courses','exams','results','teach-guidance']:user?.role==='admin'?['dashboard','members','ai-settings']:['home','assessments','grades','guidance','assignments'];
+ const menus=teaching?['teach-home','courses','exams','results','teach-guidance']:user?.role==='admin'?['dashboard','members','ai-settings']:['home','assessments','grades','path','guidance','assignments'];
  const signature=user?`${user.id}|${user.role}|${teaching}|${menus.join()}`:'public';
  if(signature!==navSignature){navSignature=signature;
  $('#nav').innerHTML=user?menus.map((key,i)=>`<button data-view="${key}" class="${view===key?'active':''}" ${view===key?'aria-current="page"':''}><span class="nav-icon" aria-hidden="true">${navIcon(key)}</span><span class="nav-text">${teacherLabels[key]||menuLabels[key]}${AI_VIEWS.includes(key)?AI_MARK:''}</span><span class="nav-count" data-count="${key}" hidden></span></button>`).join(''):'';

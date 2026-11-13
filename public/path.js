@@ -62,20 +62,28 @@ function lpDraw(el,s){
   svg.setAttribute('width',row.scrollWidth);svg.setAttribute('height',row.scrollHeight);
   const id='lp'+(++lpSeq);
   const defs=document.createElementNS(SVGNS,'defs');
+  // Small open chevron with round caps; drawn in user space so it stays the same size and follows the path tangent.
   for(const [name,color] of [['solid','#f38020'],['dashed','#a8aeb5']]){
-   const m=document.createElementNS(SVGNS,'marker');m.setAttribute('id',`${id}-${name}`);m.setAttribute('viewBox','0 0 10 10');m.setAttribute('refX','9');m.setAttribute('refY','5');m.setAttribute('markerWidth','7');m.setAttribute('markerHeight','7');m.setAttribute('orient','auto-start-reverse');
-   const p=document.createElementNS(SVGNS,'path');p.setAttribute('d','M0,0 L10,5 L0,10 z');p.setAttribute('fill',color);m.appendChild(p);defs.appendChild(m);
+   const m=document.createElementNS(SVGNS,'marker');m.setAttribute('id',`${id}-${name}`);m.setAttribute('viewBox','0 0 12 12');m.setAttribute('refX','10');m.setAttribute('refY','6');m.setAttribute('markerUnits','userSpaceOnUse');m.setAttribute('markerWidth','11');m.setAttribute('markerHeight','11');m.setAttribute('orient','auto');m.setAttribute('overflow','visible');
+   const p=document.createElementNS(SVGNS,'path');p.setAttribute('d','M3,2.2 L10,6 L3,9.8');p.setAttribute('fill','none');p.setAttribute('stroke',color);p.setAttribute('stroke-width','2');p.setAttribute('stroke-linecap','round');p.setAttribute('stroke-linejoin','round');m.appendChild(p);defs.appendChild(m);
   }
   svg.appendChild(defs);
-  const line=(d,solid)=>{const p=document.createElementNS(SVGNS,'path');p.setAttribute('d',d);p.setAttribute('fill','none');p.setAttribute('stroke',solid?'#f38020':'#a8aeb5');p.setAttribute('stroke-width',solid?'2':'1.6');if(!solid)p.setAttribute('stroke-dasharray','6 5');p.setAttribute('stroke-linecap','round');p.setAttribute('marker-end',`url(#${id}-${solid?'solid':'dashed'})`);svg.appendChild(p);};
+  const line=(d,solid)=>{const p=document.createElementNS(SVGNS,'path');p.setAttribute('d',d);p.setAttribute('fill','none');p.setAttribute('stroke',solid?'#f38020':'#a8aeb5');p.setAttribute('stroke-width',solid?'2':'1.6');if(!solid)p.setAttribute('stroke-dasharray','5 5');p.setAttribute('stroke-linecap','round');p.setAttribute('stroke-linejoin','round');p.setAttribute('marker-end',`url(#${id}-${solid?'solid':'dashed'})`);svg.appendChild(p);};
   for(let i=0;i<nodes.length-1;i++){
    const a=nodes[i],b=nodes[i+1];
-   const x1=a.offsetLeft+a.offsetWidth,y1=a.offsetTop+a.offsetHeight/2,x2=b.offsetLeft-3,y2=b.offsetTop+b.offsetHeight/2,dx=Math.max(24,(x2-x1)*.55);
+   const ah=a.offsetHeight,bh=b.offsetHeight,aTop=a.offsetTop,bTop=b.offsetTop;
+   // Leave and enter on the side nearer the other box so the vertical drop stays small.
+   const down=bTop+bh/2>aTop+ah/2,flat=Math.abs((bTop+bh/2)-(aTop+ah/2))<4;
+   const y1=flat?aTop+ah/2:down?aTop+ah*.68:aTop+ah*.32;
+   const y2=flat?bTop+bh/2:down?bTop+bh*.32:bTop+bh*.68;
+   const x1=a.offsetLeft+a.offsetWidth+2,x2=b.offsetLeft-2,lead=8,span=x2-lead-x1;
+   // S-curve: horizontal tangents at both ends, then a short straight lead-in so the arrowhead points straight in.
+   const c=span*.5;
    const solid=b.classList.contains('lp-done')||b.classList.contains('lp-progress');
-   line(`M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`,solid);
+   line(`M${x1},${y1} C${x1+c},${y1} ${x2-lead-c},${y2} ${x2-lead},${y2} L${x2},${y2}`,solid);
   }
-  // Retake: a small loop that leaves the top of the box and comes back into it.
-  nodes.filter(n=>n.querySelector('.lp-retake')).forEach(n=>{const x=n.offsetLeft,y=n.offsetTop,w=n.offsetWidth;line(`M${x+w*.72},${y} C${x+w*.72},${y-30} ${x+w*.28},${y-30} ${x+w*.28},${y-2}`,true);});
+  // Retake: a rounded loop that leaves the top edge, arcs over and comes back down into the box.
+  nodes.filter(n=>n.querySelector('.lp-retake')).forEach(n=>{const x=n.offsetLeft,y=n.offsetTop,w=n.offsetWidth,r=x+w*.66,l=x+w*.34,h=26;line(`M${r},${y-1} C${r},${y-h} ${l},${y-h} ${l},${y-8} L${l},${y-2}`,true);});
   row.prepend(svg);
   const next=row.querySelector('.lp-next'),track=el.querySelector('.lp-track');if(next&&!el._scrolled){el._scrolled=true;track.scrollLeft=Math.max(0,next.offsetLeft-track.clientWidth/2);}
  };
@@ -100,4 +108,14 @@ async function renderModuleEditor(course){
   };
   draw();
  }catch(e){$('#main').innerHTML=`<section class="panel"><p>${escape(e.message)}</p></section>`;}
+}
+
+// Student menu: 러닝 패스 (/learn/path)
+async function renderStudentPath(){
+ shell();startLoading('러닝 패스를 불러오고 있습니다…');
+ try{const {paths}=await api('/student/learning-path');if(view!=='path')return;
+  $('#main').innerHTML=`<section class="intro"><span class="eyebrow">LEARNING PATH</span><h1>러닝 패스</h1><p>강사가 설계한 주차별 모듈을 따라 지나온 경로는 실선, 앞으로의 예상 경로는 점선으로 표시합니다. 단계를 누르면 자세히 볼 수 있습니다.</p></section>${paths.length>1?`<section class="dashboard-toolbar"><div><label for="path-course">과정</label><select id="path-course"><option value="">전체 과정</option>${paths.map(p=>`<option value="${p.course_id}">${courseName(p)}</option>`).join('')}</select></div></section>`:''}<section class="panel learning-path-panel"><div id="learning-path"></div></section>`;
+  const draw=()=>{const c=$('#path-course')?.value;renderLearningPath($('#learning-path'),paths.filter(p=>!c||p.course_id===c));};
+  if($('#path-course'))$('#path-course').onchange=draw;draw();
+ }catch(e){if(view==='path')$('#main').innerHTML=`<section class="panel"><p>${escape(e.message)}</p></section>`;}
 }
