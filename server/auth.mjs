@@ -100,7 +100,7 @@ export function createHandler(db) {
     await query('DELETE FROM app_sessions WHERE user_id=$1',[session.id]);
     return response({ok:true},200,{'Set-Cookie':`${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`});
    }
-   if(/^\/(instructor|student)\/guidance(?:\/generate)?$/.test(path))return await guidanceAPI({path,method,body,session,query,response,fail});
+   if(/^\/(instructor|student)\/guidance(?:\/generate|\/prompts)?$/.test(path))return await guidanceAPI({path,method,body,session,query,response,fail});
    if(path==='/admin/overview') return await adminOverviewAPI({method,session,query,response,fail});
    if(path.startsWith('/admin/ai')) return await settingsAPI({path,method,body,session,query,response,fail});
    if(/^\/(instructor|student)\/assessments(?:\/|$)/.test(path)&&!(path==='/instructor/assessments')) return await assessmentAPI({path,method,body,session,query,response,fail});

@@ -1,0 +1,21 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {createTestDatabase} from './helpers/d1.mjs';import {guidanceAPI} from '../server/guidance.mjs';
+test('instruction documents can be registered per course and the default cannot be deleted',async()=>{
+ const db=await createTestDatabase({migrations:['0001_schema.sql','0003_guidance_prompts.sql']});
+ const teacher='10000000-0000-4000-8000-000000000001',student='10000000-0000-4000-8000-000000000002',course='20000000-0000-4000-8000-000000000001';
+ for(const [id,role]of [[teacher,'instructor'],[student,'student']])await db.query('INSERT INTO app_users(id,name,email,password_hash,role) VALUES($1,$2,$3,$4,$5)',[id,role,id+'@example.com','unused',role]);
+ await db.query('INSERT INTO courses(id,owner_id,title,student_ids) VALUES($1,$2,$3,$4)',[course,teacher,'웹 기초',JSON.stringify([student])]);
+ const call=(path,method,session,body={})=>guidanceAPI({path,method,session,body,query:db.query,response:data=>({status:200,data}),fail:(error,status=400)=>({status,error})});
+ const t={id:teacher,role:'instructor'};
+ assert.equal((await call('/instructor/guidance/prompts','GET',{id:student,role:'student'})).status,403);
+ const list=(await call('/instructor/guidance/prompts','GET',t)).data.prompts;
+ assert.equal(list.length,1);assert.equal(list[0].is_default,1);assert.match(list[0].content,/예측/);
+ const saved=await call('/instructor/guidance/prompts','POST',t,{title:'웹 기초 전용',content:'# 웹 기초\n- 예측 포함',course_id:course});
+ assert.equal(saved.status,200);
+ const after=(await call('/instructor/guidance/prompts','GET',t)).data.prompts;
+ assert.equal(after.length,2);assert.equal(after.find(p=>p.id===saved.data.id).course_title,'웹 기초');
+ assert.equal((await call('/instructor/guidance/prompts','POST',t,{id:list[0].id,delete:true})).status,400);
+ assert.equal((await call('/instructor/guidance/prompts','POST',t,{id:saved.data.id,delete:true})).status,200);
+ assert.equal((await call('/instructor/guidance/prompts','GET',t)).data.prompts.length,1);
+ const gen=await call('/instructor/guidance/generate','POST',t,{course_id:course,student_id:student,privacyChecked:true});
+ assert.equal(gen.status,503);
+});
