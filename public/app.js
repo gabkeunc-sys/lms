@@ -62,7 +62,7 @@ function shell(){
  const menus=teaching?['teach-home','courses','exams','results','teach-guidance']:user?.role==='admin'?['dashboard','members','ai-settings']:['home','assessments','grades','path','guidance','assignments'];
  const signature=user?`${user.id}|${user.role}|${teaching}|${menus.join()}`:'public';
  if(signature!==navSignature){navSignature=signature;
- $('#nav').innerHTML=user?menus.map((key,i)=>`<button data-view="${key}" class="${view===key?'active':''}" ${view===key?'aria-current="page"':''}><span class="nav-icon" aria-hidden="true">${navIcon(key)}</span><span class="nav-text">${teacherLabels[key]||menuLabels[key]}${AI_VIEWS.includes(key)?AI_MARK:''}</span><span class="nav-count" data-count="${key}" hidden></span></button>`).join(''):'';
+ $('#nav').innerHTML=user?menus.map((key,i)=>`<button data-view="${key}" title="${teacherLabels[key]||menuLabels[key]}" class="${view===key?'active':''}" ${view===key?'aria-current="page"':''}><span class="nav-icon" aria-hidden="true">${navIcon(key)}</span><span class="nav-text">${teacherLabels[key]||menuLabels[key]}${AI_VIEWS.includes(key)?AI_MARK:''}</span><span class="nav-count" data-count="${key}" hidden></span></button>`).join(''):'';
  if(user)loadNavCounts(teaching);
  $('#account').innerHTML=user?`${user.role==='admin'?`<button class="secondary" data-view="${teaching?'dashboard':'teach-home'}">${teaching?'관리자 화면':'강사 화면'}</button>`:''}<span class="pill ${user.role==='admin'?'admin':''}">${roleLabel(user.role)}</span><details class="account-menu"><summary>${escape(user.name)} <span aria-hidden="true">⌄</span></summary><div class="account-options"><button data-view="profile">내 정보</button>${['admin','instructor'].includes(user.role)?'<button data-view="teach-home">강사 화면으로 전환</button>':''}${user.role==='admin'?'<button data-view="members">관리자 화면으로 전환</button>':''}<button data-view="password">비밀번호 변경</button><button id="logout">로그아웃</button></div></details>`:'';
  $('#logout')?.addEventListener('click',async()=>{try{await api('/logout',{method:'POST',body:'{}'});user=null;navSignature=null;mode='login';page=1;search='';history.replaceState({},'','/');renderPublic();}catch(e){toast(e.message);}});
@@ -152,3 +152,12 @@ function renderLanding(){
 
 
 
+
+// Collapsible sidebar: icons only when collapsed; the choice is remembered per browser.
+(function(){
+ const KEY='lms.sidebar.collapsed',btn=document.getElementById('side-toggle');if(!btn)return;
+ const apply=on=>{document.body.classList.toggle('side-collapsed',on);btn.setAttribute('aria-expanded',String(!on));const t=on?'사이드 메뉴 펼치기':'사이드 메뉴 접기';btn.setAttribute('aria-label',t);btn.title=t;window.dispatchEvent(new Event('resize'));};
+ let saved=false;try{saved=localStorage.getItem(KEY)==='1';}catch{}
+ apply(saved);
+ btn.addEventListener('click',()=>{const on=!document.body.classList.contains('side-collapsed');apply(on);try{localStorage.setItem(KEY,on?'1':'0');}catch{}});
+})();

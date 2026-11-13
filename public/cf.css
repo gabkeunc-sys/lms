@@ -222,3 +222,24 @@ nav button .ai-mark{margin-left:6px;margin-right:0}
 .review-item:hover{border-color:var(--orange);background:var(--orange-soft)}
 .review-item b{color:var(--orange-dark)}
 @media(max-width:1050px){.dv-grid{grid-template-columns:minmax(0,1fr)}.kpi-spark{display:none}}
+
+/* Collapsible sidebar */
+.side-toggle{display:none}
+body:not(.public-page) .side-toggle{display:inline-grid;place-items:center;width:32px;height:32px;margin-right:12px;border:1px solid #3a3f44;border-radius:var(--radius);background:transparent;color:#e6e8ea;cursor:pointer;flex:none}
+body:not(.public-page) .side-toggle:hover{border-color:var(--orange);color:#fff}
+body:not(.public-page) header #breadcrumb{margin-right:auto}
+body:not(.public-page) aside,body:not(.public-page) .workspace,body:not(.public-page) header,body:not(.public-page) aside .brand{transition:width .18s ease,margin-left .18s ease,padding-left .18s ease}
+@media(min-width:741px){
+body.side-collapsed{--side-w:64px}
+body.side-collapsed:not(.public-page) aside{padding:14px 8px}
+body.side-collapsed:not(.public-page) aside .brand{padding:0 17px}
+body.side-collapsed:not(.public-page) aside .brand span{display:none}
+body.side-collapsed:not(.public-page) .nav-label,body.side-collapsed:not(.public-page) .sidebar-bottom{display:none}
+body.side-collapsed:not(.public-page) nav button{position:relative;display:flex;justify-content:center;padding:10px 0}
+body.side-collapsed:not(.public-page) .nav-text{display:none}
+body.side-collapsed:not(.public-page) .nav-icon{width:auto;margin:0}
+body.side-collapsed:not(.public-page) .nav-count{position:absolute;top:3px;right:4px;padding:0 5px;font-size:9px;line-height:14px}
+body.side-collapsed:not(.public-page) nav button.active{box-shadow:inset 3px 0 0 var(--orange),0 0 0 1px var(--line)}
+}
+@media(max-width:740px){body:not(.public-page) .side-toggle{display:none}}
+
