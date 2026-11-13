@@ -3,7 +3,9 @@ import {assessmentAPI} from './assessment.mjs';
 import {settingsAPI} from './ai.mjs';
 import {resultsAPI} from './results.mjs';
 import {instructorAPI} from './instructor.mjs';
-import { randomBytes, randomUUID, timingSafeEqual, createHash } from 'node:crypto';
+import { randomBytes, randomUUID, timingSafeEqual, createHash, scrypt as scryptCallback } from 'node:crypto';
+import { promisify } from 'node:util';
+const scrypt = promisify(scryptCallback);
 import { NOW, nowPlus } from './db.mjs';
 const digest = value => createHash('sha256').update(value).digest('hex');
 const COOKIE = '__Host-lms_session';
@@ -20,7 +22,13 @@ export async function hashPassword(password) {
  const salt=randomBytes(16).toString('hex'), count=iterations();
  return `pbkdf2_sha256$${count}$${salt}$${(await pbkdf2(password,salt,count)).toString('hex')}`;
 }
+// Hashes migrated from the Netlify version are scrypt "salt:hash"; they are verified once and replaced on login.
+const isLegacy = stored => /^[a-f0-9]{32}:[a-f0-9]{128}$/.test(String(stored));
 async function verify(password, stored) {
+ if(isLegacy(stored)) {
+  const [salt,hash]=stored.split(':'), actual=await scrypt(password,salt,64);
+  return timingSafeEqual(actual,Buffer.from(hash,'hex'));
+ }
  const [scheme,count,salt,hash]=String(stored).split('$');
  const valid=scheme==='pbkdf2_sha256' && /^\d+$/.test(count) && Number(count)>0 && Number(count)<=MAX_ITERATIONS && /^[a-f0-9]{32}$/.test(salt) && /^[a-f0-9]{64}$/.test(hash);
  // Unknown or disabled hashes still cost the same work, so response time does not reveal which accounts exist.
@@ -71,6 +79,7 @@ export function createHandler(db) {
     const user=(await query('SELECT * FROM app_users WHERE email=$1',[email])).rows[0];
     const valid=await verify(password,user?.password_hash||'');
     if(!user||!valid||!user.active) return fail('이메일 또는 비밀번호가 올바르지 않거나 비활성 계정입니다.',401);
+    if(isLegacy(user.password_hash)) await query('UPDATE app_users SET password_hash=$1 WHERE id=$2 AND password_hash=$3',[await hashPassword(password),user.id,user.password_hash]);
     const fresh=randomBytes(32).toString('hex');
     if(token) await query('DELETE FROM app_sessions WHERE token_hash=$1',[digest(token)]);
     await query(`DELETE FROM app_sessions WHERE expires_at<${NOW}`);

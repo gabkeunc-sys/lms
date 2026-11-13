@@ -1,0 +1,9 @@
+{
+  "name": "lms-import-netlify",
+  "main": "worker.mjs",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "triggers": { "crons": ["* * * * *"] },
+  "d1_databases": [{ "binding": "DB", "database_name": "lms", "database_id": "62623e7a-3d83-4c7a-b3c7-4d0d68f4ced0" }]
+}
