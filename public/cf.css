@@ -555,3 +555,5 @@ body:not(.public-page) .subtabs button.selected:hover{background:#fff}
 .gv-plan-progress span{display:block;height:100%;background:linear-gradient(90deg,#fbbf24,#f38020);transition:width .2s}
 @media(max-width:1100px){.gv-grid{grid-template-columns:1fr 1fr}.gv-mods{grid-row:auto;grid-column:1/-1}.gv-plan{grid-column:1/-1}}
 @media(max-width:640px){.gv-grid{grid-template-columns:1fr}}
+.gv-bm-label.end{transform:translateX(-50%);top:14px}
+.gv-gauge-axis:has(.gv-bm-label){height:28px}
