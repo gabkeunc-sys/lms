@@ -59,19 +59,27 @@ function routeUser(){
 function shell(){
  document.body.classList.toggle('public-page',!user);document.body.classList.remove('landing-page');
  const teaching=user&&(user.role==='instructor'||(user.role==='admin'&&Object.hasOwn(teacherLabels,view)));
- const menus=teaching?['teach-home','courses','exams','results','teach-guidance']:user?.role==='admin'?['dashboard','members','ai-settings']:['home','assessments','grades','path','guidance','assignments'];
+ const groups=teaching?[['teach-home'],['courses','exams'],['results','teach-guidance']]:user?.role==='admin'?[['dashboard'],['members'],['ai-settings']]:[['home'],['assessments','grades','path'],['guidance','assignments']];
+ const menus=groups.flat();
  const signature=user?`${user.id}|${user.role}|${teaching}|${menus.join()}`:'public';
  if(signature!==navSignature){navSignature=signature;
- $('#nav').innerHTML=user?menus.map((key,i)=>`<button data-view="${key}" title="${teacherLabels[key]||menuLabels[key]}" class="${view===key?'active':''}" ${view===key?'aria-current="page"':''}><span class="nav-icon" aria-hidden="true">${navIcon(key)}</span><span class="nav-text">${teacherLabels[key]||menuLabels[key]}${AI_VIEWS.includes(key)?AI_MARK:''}</span><span class="nav-count" data-count="${key}" hidden></span></button>`).join(''):'';
+ const item=key=>`<button data-view="${key}" title="${teacherLabels[key]||menuLabels[key]}" class="${view===key?'active':''}" ${view===key?'aria-current="page"':''}><span class="nav-icon" aria-hidden="true">${navIcon(key)}</span><span class="nav-text">${teacherLabels[key]||menuLabels[key]}${AI_VIEWS.includes(key)?AI_MARK:''}</span><span class="nav-count" data-count="${key}" hidden></span></button>`;
+ $('#nav').innerHTML=user?groups.map(g=>g.map(item).join('')).join('<hr class="nav-sep">'):'';
  if(user)loadNavCounts(teaching);
  $('#account').innerHTML=user?`${user.role==='admin'?`<button class="secondary" data-view="${teaching?'dashboard':'teach-home'}">${teaching?'관리자 화면':'강사 화면'}</button>`:''}<span class="pill ${user.role==='admin'?'admin':''}">${roleLabel(user.role)}</span><details class="account-menu"><summary>${escape(user.name)} <span aria-hidden="true">⌄</span></summary><div class="account-options"><button data-view="profile">내 정보</button>${['admin','instructor'].includes(user.role)?'<button data-view="teach-home">강사 화면으로 전환</button>':''}${user.role==='admin'?'<button data-view="members">관리자 화면으로 전환</button>':''}<button data-view="password">비밀번호 변경</button><button id="logout">로그아웃</button></div></details>`:'';
  $('#logout')?.addEventListener('click',async()=>{try{await api('/logout',{method:'POST',body:'{}'});user=null;navSignature=null;mode='login';page=1;search='';history.replaceState({},'','/');renderPublic();}catch(e){toast(e.message);}});
  }
- document.querySelectorAll('#nav [data-view]').forEach(b=>{const on=b.dataset.view===view;b.classList.toggle('active',on);on?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current');});
+ document.querySelectorAll('#nav [data-view],.side-link[data-view]').forEach(b=>{const on=b.dataset.view===view;b.classList.toggle('active',on);on?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current');});
  if(user&&ROUTES[view]&&location.pathname!==ROUTES[view])history.replaceState({},'',ROUTES[view]);
  if(!user&&!['/login','/register'].includes(location.pathname)&&location.pathname!=='/')history.replaceState({},'','/');
  document.title=(user?(teacherLabels[view]||menuLabels[view])+' · ':'')+'배움길 LMS';
- bindViews();$('#breadcrumb').textContent='학습 공간 / '+(user?(teacherLabels[view]||menuLabels[view]):'시작하기');
+ const label=key=>teacherLabels[key]||menuLabels[key]||'';
+ const scope=!user?'배움길':teaching?'강의실':user.role==='admin'?'관리자 콘솔':'학습 공간';
+ $('#breadcrumb').innerHTML=`<span class="crumb-scope">${scope}</span><svg class="crumb-sep" viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 3.5l4.5 4.5L6 12.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg><strong>${user?escape(label(view)):'시작하기'}</strong>`;
+ // Pill tabs under the header: the other screens in the current menu group.
+ const group=user?groups.find(g=>g.includes(view)):null,tabs=$('#subtabs');
+ if(tabs){if(group&&group.length>1){tabs.hidden=false;tabs.innerHTML=group.map(k=>`<button type="button" data-view="${k}" class="${k===view?'selected':''}" ${k===view?'aria-current="page"':''}>${label(k)}</button>`).join('');}else{tabs.hidden=true;tabs.innerHTML='';}}
+ bindViews();
 }
 function renderAuth(){shell();const signup=mode==='register';$('#main').innerHTML=`<div class="auth-grid"><section class="hero"><span class="eyebrow">YOUR LEARNING JOURNEY</span><h1>배움의 기록이,<br>성장의 방향이 됩니다.</h1><p>한 걸음씩 쌓아 가는 학습.<br>나의 다음 가능성을 배움길에서 시작하세요.</p><div class="path-card"><small>배움길이 향하는 학습 과정</small><div class="path-line"><span>01</span>나의 이해도 확인하기</div><div class="path-line"><span>02</span>부족한 부분 발견하기</div><div class="path-line"><span>03</span>다음 학습 방향 정하기</div></div></section><section class="panel auth-panel"><a class="back-link" href="#">← 처음 화면</a><div class="tabs"><button data-mode="login" class="${!signup?'selected':''}">로그인</button><button data-mode="register" class="${signup?'selected':''}">회원가입</button></div><h2>${signup?'배움길의 첫걸음':'다시 만나 반갑습니다'}</h2><p class="muted">${signup?'학생 계정을 만들고 학습을 준비하세요.':'등록한 계정으로 학습 공간에 접속하세요.'}</p><form id="authform">${signup?'<label for="name">이름</label><input id="name" name="name" autocomplete="name" maxlength="80" required placeholder="이름을 입력하세요">':''}<label for="email">${signup?'이메일':'이메일 또는 아이디'}</label><input id="email" name="email" type="${signup?'email':'text'}" maxlength="254" autocomplete="username" required placeholder="${signup?'name@example.com':'이메일 또는 아이디'}"><label for="password">비밀번호</label><input id="password" name="password" type="password" autocomplete="${signup?'new-password':'current-password'}" minlength="10" maxlength="128" required placeholder="10자 이상 입력하세요">${signup?'<label for="confirm">비밀번호 확인</label><input id="confirm" type="password" autocomplete="new-password" minlength="10" maxlength="128" required placeholder="비밀번호를 다시 입력하세요">':''}<div id="formerror" class="error" role="alert"></div><button class="primary full" type="submit">${signup?'학생으로 가입하기':'로그인'}</button></form><p class="muted">${signup?'가입 시 이름과 이메일이 강사에게 표시됩니다.':'계정 이용에 문제가 있다면 담당 강사에게 문의하세요.'}</p></section></div>`;
  document.querySelectorAll('[data-mode]').forEach(b=>b.addEventListener('click',()=>{location.hash=b.dataset.mode;}));
@@ -156,7 +164,7 @@ function renderLanding(){
 // Collapsible sidebar: icons only when collapsed; the choice is remembered per browser.
 (function(){
  const KEY='lms.sidebar.collapsed',btn=document.getElementById('side-toggle');if(!btn)return;
- const apply=on=>{document.body.classList.toggle('side-collapsed',on);btn.setAttribute('aria-expanded',String(!on));const t=on?'사이드 메뉴 펼치기':'사이드 메뉴 접기';btn.setAttribute('aria-label',t);btn.title=t;window.dispatchEvent(new Event('resize'));};
+ const apply=on=>{document.body.classList.toggle('side-collapsed',on);btn.setAttribute('aria-expanded',String(!on));const t=on?'사이드 메뉴 펼치기':'사이드 메뉴 접기';btn.setAttribute('aria-label',t);btn.title=t;const txt=btn.querySelector('.nav-text');if(txt)txt.textContent=on?'메뉴 펼치기':'메뉴 접기';window.dispatchEvent(new Event('resize'));};
  let saved=false;try{saved=localStorage.getItem(KEY)==='1';}catch{}
  apply(saved);
  btn.addEventListener('click',()=>{const on=!document.body.classList.contains('side-collapsed');apply(on);try{localStorage.setItem(KEY,on?'1':'0');}catch{}});
