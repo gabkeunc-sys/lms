@@ -5,7 +5,7 @@ import {assessmentAPI} from './assessment.mjs';
 import {settingsAPI} from './ai.mjs';
 import {resultsAPI} from './results.mjs';
 import {instructorAPI} from './instructor.mjs';
-import {adminOverviewAPI} from './admin.mjs';
+import {adminOverviewAPI,adminScheduleAPI} from './admin.mjs';
 import { randomBytes, randomUUID, timingSafeEqual, createHash, scrypt as scryptCallback } from 'node:crypto';
 import { promisify } from 'node:util';
 const scrypt = promisify(scryptCallback);
@@ -105,6 +105,7 @@ export function createHandler(db) {
    if(path==='/instructor/images')return await imagesAPI({method,body,session,query,response,fail});
    if(path==='/student/learning-path'||path==='/student/class-stats'||/^\/instructor\/(learning-path\/[^/]+|courses\/[^/]+\/modules)$/.test(path))return await pathAPI({path,method,body,session,query,response,fail});
    if(/^\/(instructor|student)\/guidance(?:\/generate|\/prompts)?$/.test(path))return await guidanceAPI({path,method,body,session,query,response,fail});
+   if(path==='/admin/schedule') return await adminScheduleAPI({method,session,query,response,fail});
    if(path==='/admin/overview') return await adminOverviewAPI({method,session,query,response,fail});
    if(path.startsWith('/admin/ai')) return await settingsAPI({path,method,body,session,query,response,fail});
    if(/^\/(instructor|student)\/assessments(?:\/|$)/.test(path)&&!(path==='/instructor/assessments')) return await assessmentAPI({path,method,body,session,query,response,fail});
