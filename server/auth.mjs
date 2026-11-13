@@ -1,4 +1,5 @@
 import {guidanceAPI} from './guidance.mjs';
+import {teachAPI} from './teach.mjs';
 import {pathAPI} from './path.mjs';
 import {imagesAPI} from './images.mjs';
 import {assessmentAPI} from './assessment.mjs';
@@ -105,6 +106,7 @@ export function createHandler(db) {
     return response({ok:true},200,{'Set-Cookie':`${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`});
    }
    if(path==='/instructor/images')return await imagesAPI({method,body,session,query,response,fail});
+   if(/^\/instructor\/(today|grading|analysis|bank|roster|students\/[a-f0-9-]{36}\/detail|notes|risk|course-plan)(\/|$)/.test(path)||/^\/instructor\/courses\/[a-f0-9-]{36}\/duplicate$/.test(path))return await teachAPI({path,method,body,session,query,response,fail,url});
    if(path==='/student/learning-path'||path==='/student/class-stats'||/^\/instructor\/(learning-path\/[^/]+|courses\/[^/]+\/modules)$/.test(path))return await pathAPI({path,method,body,session,query,response,fail});
    if(/^\/(instructor|student)\/guidance(?:\/generate|\/prompts)?$/.test(path))return await guidanceAPI({path,method,body,session,query,response,fail});
    if(/^\/(announcements|notifications)(\/|$)/.test(path)||/^\/admin\/(courses|risk|quality|ai-usage|reports|activity)(\/|$)/.test(path)) return await opsAPI({path,method,body,session,query,response,fail,url});

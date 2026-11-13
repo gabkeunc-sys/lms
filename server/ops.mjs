@@ -151,41 +151,7 @@ export async function opsAPI({path, method, body, session, query, response, fail
  }
 
  // ---- 위험 학생 ----
- if (path === '/admin/risk' && method === 'GET') {
-  const rows = (await query(`SELECT c.id AS course_id,c.title AS course_title,c.start_date,c.end_date,c.owner_id,o.name AS owner_name,u.id AS student_id,u.name AS student_name,u.email
-   FROM courses c JOIN app_users o ON o.id=c.owner_id, json_each(c.student_ids) j JOIN app_users u ON u.id=j.value
-   WHERE c.deleted_at IS NULL AND c.status<>'ended' AND u.active=1`)).rows;
-  const due = (await query(`SELECT a.id,a.course_id,a.week,a.title FROM assessments a JOIN courses c ON c.id=a.course_id WHERE c.deleted_at IS NULL AND a.published=1 AND coalesce(a.opens_at,'0')<strftime('%Y-%m-%dT%H:%M:%fZ','now','-2 days')`)).rows;
-  const results = (await query(`SELECT r.student_id,a.course_id,a.id AS assessment_id,a.week,r.score,r.total,r.grading_status,r.submitted_at FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id`)).rows;
-  const bench = (await query('SELECT course_id,week,benchmark FROM course_modules WHERE benchmark IS NOT NULL')).rows;
-  const notified = (await query("SELECT target,max(created_at) AS at FROM activity_log WHERE action='risk.notify' GROUP BY target")).rows;
-  const lastNotified = new Map(notified.map(n => [n.target, n.at]));
-  const out = [];
-  for (const r of rows) {
-   const mine = results.filter(x => x.student_id === r.student_id && x.course_id === r.course_id);
-   const taken = new Set(mine.map(x => x.assessment_id));
-   const missed = due.filter(d => d.course_id === r.course_id && !taken.has(d.id));
-   const conf = mine.filter(x => x.grading_status === 'confirmed' && x.total > 0).sort((a, b) => a.submitted_at.localeCompare(b.submitted_at)).map(x => ({week: x.week, p: x.score * 100 / x.total}));
-   const reasons = [];let level = 0;
-   if (missed.length >= 2) { reasons.push({type: 'missed', label: `미응시 ${missed.length}건`, detail: missed.map(x => `${x.week}주차`).join(', ')}); level += missed.length >= 3 ? 3 : 2; }
-   else if (missed.length === 1) { reasons.push({type: 'missed', label: '미응시 1건', detail: `${missed[0].week}주차`}); level += 1; }
-   if (conf.length >= 3) {
-    const last = conf[conf.length - 1].p, prev = conf.slice(0, -1).reduce((a, b) => a + b.p, 0) / (conf.length - 1);
-    if (prev - last >= 20) { reasons.push({type: 'drop', label: `점수 급락 -${Math.round(prev - last)}점`, detail: `이전 평균 ${pct(prev)} → 최근 ${pct(last)}`}); level += 2; }
-   }
-   const avg = conf.length ? conf.reduce((a, b) => a + b.p, 0) / conf.length : null;
-   const bw = bench.filter(b => b.course_id === r.course_id && conf.some(c => c.week === b.week));
-   const target = bw.length ? bw.reduce((a, b) => a + b.benchmark, 0) / bw.length : null;
-   if (avg != null && target != null && target - avg >= 25) { reasons.push({type: 'gap', label: `3년차 기준 -${Math.round(target - avg)}점`, detail: `평균 ${pct(avg)} / 기준 ${pct(target)}`}); level += target - avg >= 35 ? 2 : 1; }
-   if (avg != null && avg < 50) { reasons.push({type: 'low', label: `평균 ${pct(avg)}점`, detail: '확정 성적 평균 50점 미만'}); level += 1; }
-   // A single missed assessment alone is not a risk signal.
-   if (!reasons.length || (reasons.length === 1 && missed.length === 1)) continue;
-   const key = `${r.student_id}:${r.course_id}`;
-   out.push({...r, reasons, level: level >= 4 ? 'high' : level >= 2 ? 'medium' : 'low', score: level, average: pct(avg), benchmark: pct(target), taken: mine.length, missed: missed.length, notified_at: lastNotified.get(key) || null});
-  }
-  out.sort((a, b) => b.score - a.score || a.student_name.localeCompare(b.student_name));
-  return response({students: out, summary: {high: out.filter(x => x.level === 'high').length, medium: out.filter(x => x.level === 'medium').length, low: out.filter(x => x.level === 'low').length, students: new Set(out.map(x => x.student_id)).size}});
- }
+ if (path === '/admin/risk' && method === 'GET') return response(await computeRisk(query));
  if (path === '/admin/risk/notify' && method === 'POST') {
   const c = (await query('SELECT c.id,c.title,c.owner_id FROM courses c WHERE c.id=$1 AND c.deleted_at IS NULL', [body.course_id])).rows[0];
   const s = (await query("SELECT id,name FROM app_users WHERE id=$1 AND role='student'", [body.student_id])).rows[0];
@@ -277,4 +243,41 @@ export async function activityList(query, url) {
  const rows = (await query(`SELECT l.id,l.created_at,l.action,l.target,l.detail,u.name AS actor_name,u.role AS actor_role FROM activity_log l LEFT JOIN app_users u ON u.id=l.actor_id WHERE ${where} ORDER BY l.created_at DESC LIMIT 20 OFFSET ${(page - 1) * 20}`, params)).rows;
  const counts = (await query("SELECT substr(action,1,instr(action||'.','.')-1) AS grp,count(*) AS n FROM activity_log WHERE created_at>=strftime('%Y-%m-%dT%H:%M:%fZ','now','-7 days') GROUP BY grp")).rows;
  return {rows: rows.map(r => ({...r, detail: typeof r.detail === 'string' ? JSON.parse(r.detail) : r.detail})), total, page, counts};
+}
+
+// Students at risk across courses (optionally one instructor's courses only).
+export async function computeRisk(query, ownerId = null) {
+  const rows = (await query(`SELECT c.id AS course_id,c.title AS course_title,c.start_date,c.end_date,c.owner_id,o.name AS owner_name,u.id AS student_id,u.name AS student_name,u.email
+   FROM courses c JOIN app_users o ON o.id=c.owner_id, json_each(c.student_ids) j JOIN app_users u ON u.id=j.value
+   WHERE c.deleted_at IS NULL AND c.status<>'ended' AND u.active=1 AND ($1 IS NULL OR c.owner_id=$1)`, [ownerId])).rows;
+  const due = (await query(`SELECT a.id,a.course_id,a.week,a.title FROM assessments a JOIN courses c ON c.id=a.course_id WHERE c.deleted_at IS NULL AND a.published=1 AND coalesce(a.opens_at,'0')<strftime('%Y-%m-%dT%H:%M:%fZ','now','-2 days')`)).rows;
+  const results = (await query(`SELECT r.student_id,a.course_id,a.id AS assessment_id,a.week,r.score,r.total,r.grading_status,r.submitted_at FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id`)).rows;
+  const bench = (await query('SELECT course_id,week,benchmark FROM course_modules WHERE benchmark IS NOT NULL')).rows;
+  const notified = (await query("SELECT target,max(created_at) AS at FROM activity_log WHERE action='risk.notify' GROUP BY target")).rows;
+  const lastNotified = new Map(notified.map(n => [n.target, n.at]));
+  const out = [];
+  for (const r of rows) {
+   const mine = results.filter(x => x.student_id === r.student_id && x.course_id === r.course_id);
+   const taken = new Set(mine.map(x => x.assessment_id));
+   const missed = due.filter(d => d.course_id === r.course_id && !taken.has(d.id));
+   const conf = mine.filter(x => x.grading_status === 'confirmed' && x.total > 0).sort((a, b) => a.submitted_at.localeCompare(b.submitted_at)).map(x => ({week: x.week, p: x.score * 100 / x.total}));
+   const reasons = [];let level = 0;
+   if (missed.length >= 2) { reasons.push({type: 'missed', label: `미응시 ${missed.length}건`, detail: missed.map(x => `${x.week}주차`).join(', ')}); level += missed.length >= 3 ? 3 : 2; }
+   else if (missed.length === 1) { reasons.push({type: 'missed', label: '미응시 1건', detail: `${missed[0].week}주차`}); level += 1; }
+   if (conf.length >= 3) {
+    const last = conf[conf.length - 1].p, prev = conf.slice(0, -1).reduce((a, b) => a + b.p, 0) / (conf.length - 1);
+    if (prev - last >= 20) { reasons.push({type: 'drop', label: `점수 급락 -${Math.round(prev - last)}점`, detail: `이전 평균 ${pct(prev)} → 최근 ${pct(last)}`}); level += 2; }
+   }
+   const avg = conf.length ? conf.reduce((a, b) => a + b.p, 0) / conf.length : null;
+   const bw = bench.filter(b => b.course_id === r.course_id && conf.some(c => c.week === b.week));
+   const target = bw.length ? bw.reduce((a, b) => a + b.benchmark, 0) / bw.length : null;
+   if (avg != null && target != null && target - avg >= 25) { reasons.push({type: 'gap', label: `3년차 기준 -${Math.round(target - avg)}점`, detail: `평균 ${pct(avg)} / 기준 ${pct(target)}`}); level += target - avg >= 35 ? 2 : 1; }
+   if (avg != null && avg < 50) { reasons.push({type: 'low', label: `평균 ${pct(avg)}점`, detail: '확정 성적 평균 50점 미만'}); level += 1; }
+   // A single missed assessment alone is not a risk signal.
+   if (!reasons.length || (reasons.length === 1 && missed.length === 1)) continue;
+   const key = `${r.student_id}:${r.course_id}`;
+   out.push({...r, reasons, level: level >= 4 ? 'high' : level >= 2 ? 'medium' : 'low', score: level, average: pct(avg), benchmark: pct(target), taken: mine.length, missed: missed.length, notified_at: lastNotified.get(key) || null});
+  }
+  out.sort((a, b) => b.score - a.score || a.student_name.localeCompare(b.student_name));
+  return {students: out, summary: {high: out.filter(x => x.level === 'high').length, medium: out.filter(x => x.level === 'medium').length, low: out.filter(x => x.level === 'low').length, students: new Set(out.map(x => x.student_id)).size}};
 }

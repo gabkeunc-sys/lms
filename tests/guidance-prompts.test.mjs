@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {createTestDatabase} from './helpers/d1.mjs';import {guidanceAPI} from '../server/guidance.mjs';
 test('instruction documents can be registered per course and the default cannot be deleted',async()=>{
- const db=await createTestDatabase({migrations:['0001_schema.sql','0003_guidance_prompts.sql','0007_operations.sql']});
+ const db=await createTestDatabase({migrations:['0001_schema.sql','0003_guidance_prompts.sql','0007_operations.sql','0008_teaching_tools.sql']});
  const teacher='10000000-0000-4000-8000-000000000001',student='10000000-0000-4000-8000-000000000002',course='20000000-0000-4000-8000-000000000001';
  for(const [id,role]of [[teacher,'instructor'],[student,'student']])await db.query('INSERT INTO app_users(id,name,email,password_hash,role) VALUES($1,$2,$3,$4,$5)',[id,role,id+'@example.com','unused',role]);
  await db.query('INSERT INTO courses(id,owner_id,title,student_ids) VALUES($1,$2,$3,$4)',[course,teacher,'웹 기초',JSON.stringify([student])]);

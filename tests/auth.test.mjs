@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createTestDatabase} from './helpers/d1.mjs';
 import {createHandler} from '../server/auth.mjs';
 test('PostgreSQL authentication and authorization lifecycle',async()=>{
- const db=await createTestDatabase({migrations:['0001_schema.sql','0007_operations.sql']});
+ const db=await createTestDatabase({migrations:['0001_schema.sql','0007_operations.sql','0008_teaching_tools.sql']});
  const handler=createHandler(db);
  const call=(path,method='GET',body, cookie='',origin='https://lms.test')=>handler(new Request('https://lms.test/api'+path,{method,headers:{'content-type':'application/json',origin,cookie},...(body?{body:JSON.stringify(body)}:{})}),{ip:'test-ip'});
  const account={email:'student@example.com',name:'학생 <script>',password:'A-long-test-password'};
@@ -43,7 +43,7 @@ test('PostgreSQL authentication and authorization lifecycle',async()=>{
  assert.equal((await call('/login','POST',account)).status,429);
 });
 test('administrator student creation, editing, reset and permission boundaries',async()=>{
- const db=await createTestDatabase({migrations:['0001_schema.sql','0007_operations.sql']});
+ const db=await createTestDatabase({migrations:['0001_schema.sql','0007_operations.sql','0008_teaching_tools.sql']});
  const handler=createHandler(db);
  const call=(path,method='GET',body,cookie='')=>handler(new Request('https://lms.test/api'+path,{method,headers:{'content-type':'application/json',origin:'https://lms.test',cookie},...(body?{body:JSON.stringify(body)}:{})}),{ip:'admin-test'});
  const owner={name:'Teacher',email:'owner@example.com',password:'Owner-password-2026'};
