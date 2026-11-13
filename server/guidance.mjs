@@ -1,4 +1,5 @@
 import {generate} from './ai.mjs';
+import {logActivity,meteredAI} from './ops.mjs';
 import {NOW,nowPlus} from './db.mjs';
 import {randomUUID} from 'node:crypto';
 export async function guidanceAPI({path,method,body,session,query,response,fail}){
@@ -33,11 +34,12 @@ export async function guidanceAPI({path,method,body,session,query,response,fail}
   const limit=await query(`INSERT INTO auth_limits(key,hits,expires_at) VALUES('ai-guidance',1,${nowPlus('+10 seconds')}) ON CONFLICT(key) DO UPDATE SET hits=1,expires_at=${nowPlus('+10 seconds')} WHERE auth_limits.expires_at<${NOW} RETURNING hits`);if(!limit.rows.length)return fail('잠시 후 다시 작성하세요.',429);
   const redact=v=>String(v||'').replaceAll(target.name,'[이름 제외]').replaceAll(target.email,'[이메일 제외]').replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,'[이메일 제외]').replace(/01[016789][- ]?\d{3,4}[- ]?\d{4}/g,'[연락처 제외]');
   const evaluations=rows.map(r=>({week:r.week,kind:r.kind,score:r.score,total:r.total,concepts:r.questions.map((q,i)=>({concept:redact(q.tag||'미분류'),type:q.type==='text'?'text':'choice',points:q.points,earned:q.type==='text'?r.grading?.[i]?.score:(r.answers?.[i]===q.answer?q.points:0)}))}));
-  try{const result=await generate(setting,{task:'learning_guidance',maxPoints:0,evaluations,instructions:prompt?.content});return response({content:result.feedback});}catch(e){return fail(e.message,e.status||502);}
+  try{const result=await meteredAI(query,setting,'guidance',session.id,()=>generate(setting,{task:'learning_guidance',maxPoints:0,evaluations,instructions:prompt?.content}));return response({content:result.feedback});}catch(e){return fail(e.message,e.status||502);}
  }
  if(typeof body.content!=='string'||!body.content.trim()||body.content.length>8000||typeof body.published!=='boolean'||!Number.isInteger(body.revision)||body.revision<0)return fail('학습 방향(1~8000자)과 공개 상태를 확인하세요.');
  const params=[body.course_id,body.student_id,body.content.trim(),body.published,session.id,body.revision];
  const saved=body.revision===0?await query(`INSERT INTO learning_guidance(course_id,student_id,content,published,updated_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING revision,updated_at`,params.slice(0,5)):await query(`UPDATE learning_guidance SET content=$3,published=$4,updated_by=$5,updated_at=${NOW},revision=revision+1 WHERE course_id=$1 AND student_id=$2 AND revision=$6 RETURNING revision,updated_at`,params);
  if(!saved.rows.length)return fail('다른 곳에서 수정되었습니다. 목록을 다시 열어 확인하세요.',409);
+ await logActivity(query,session.id,params[3]?'guidance.publish':'guidance.save',`${params[1]}:${params[0]}`,{});
  return response({ok:true,...saved.rows[0]});
 }

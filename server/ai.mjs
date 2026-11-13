@@ -25,8 +25,9 @@ export async function generate(setting,payload,fetcher=fetch){
  }
  let res;try{res=await fetcher(url,{method:'POST',headers,signal:AbortSignal.timeout(50000),body:JSON.stringify(body)});}catch{throw new Error('AI 응답 시간이 초과되었거나 연결하지 못했습니다. 다시 시도하세요.');}
  if(!res.ok){const e=new Error(res.status===429?'API 요청 한도 또는 사용량을 확인하고 다시 분석하세요.':res.status===400||res.status===401||res.status===403?'공급자, API 키와 모델의 사용 권한을 확인하세요.':res.status===404?'사용 가능한 모델 ID를 확인하세요.':`AI 응답을 받지 못했습니다. 잠시 후 다시 시도하세요. (HTTP ${res.status})`);e.status=res.status===429?429:502;throw e;}
- let result;try{
+ let result,usage={input:0,output:0};try{
   const data=await res.json();
+  usage=provider==='gemini'?{input:data.usageMetadata?.promptTokenCount||0,output:data.usageMetadata?.candidatesTokenCount||0}:{input:data.usage?.input_tokens||0,output:data.usage?.output_tokens||0};
   if(provider==='gemini')result=JSON.parse(data.candidates?.[0]?.content?.parts?.filter(p=>!p.thought).map(p=>p.text||'').join(''));
   else if(provider==='openai'){
    if(data.status!=='completed')throw new Error('Incomplete');
@@ -34,7 +35,7 @@ export async function generate(setting,payload,fetcher=fetch){
   }else{if(data.stop_reason!=='tool_use')throw new Error('Incomplete');result=data.content?.find(c=>c.type==='tool_use'&&c.name==='submit_grade')?.input;}
  }catch{throw new Error('AI 분석 형식을 확인할 수 없습니다. 다시 분석하세요.');}
  if(!result||!Number.isInteger(result.score)||result.score<0||result.score>payload.maxPoints||typeof result.feedback!=='string'||!result.feedback.trim()||result.feedback.length>8000)throw new Error('AI 점수 또는 피드백 형식이 올바르지 않습니다.');
- return {score:result.score,feedback:result.feedback};
+ const out={score:result.score,feedback:result.feedback};Object.defineProperty(out,'usage',{value:usage,enumerable:false});return out;
 }
 export async function settingsAPI({path,method,body,session,query,response,fail}){
  if(!session)return fail('로그인이 필요합니다.',401);if(session.role!=='admin')return fail('관리자만 접근할 수 있습니다.',403);

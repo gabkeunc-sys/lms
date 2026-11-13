@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {NOW,toTimestamp} from './db.mjs';
+import {logActivity} from './ops.mjs';
 const uuid=s=>typeof s==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(s);
 const text=(s,max)=>typeof s==='string'&&s.trim().length>0&&s.length<=max;
 export async function instructorAPI({path,method,body,session,query,response,fail}){
@@ -11,6 +12,8 @@ export async function instructorAPI({path,method,body,session,query,response,fai
   const r=await query(`UPDATE app_users SET role=$1 WHERE id=$2 AND role<>'admin' RETURNING id`,[body.role,body.id]);
   if(!r.rows.length)return fail('변경할 회원을 찾을 수 없습니다.',404);
   await query('DELETE FROM app_sessions WHERE user_id=$1',[body.id]);
+  const who=(await query('SELECT name,email FROM app_users WHERE id=$1',[body.id])).rows[0];
+  await logActivity(query,session.id,'member.role',who?.email||body.id,{name:who?.name,role:body.role});
   return response({ok:true});
  }
  if(!['admin','instructor'].includes(session.role))return fail('강사만 접근할 수 있습니다.',403);
@@ -36,6 +39,7 @@ export async function instructorAPI({path,method,body,session,query,response,fai
   if(body.id&&!await course(body.id))return fail('과정을 찾을 수 없습니다.',404);
   const vals=[body.title.trim(),body.description,body.start_date||null,body.end_date||null,body.status,JSON.stringify(ids)];
   const r=body.id?await query('UPDATE courses SET title=$1,description=$2,start_date=$3,end_date=$4,status=$5,student_ids=$6 WHERE id=$7 RETURNING *',[...vals,body.id]):await query('INSERT INTO courses(title,description,start_date,end_date,status,student_ids,id,owner_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[...vals,randomUUID(),session.id]);
+  await logActivity(query,session.id,body.id?'course.update':'course.create',body.title.trim(),{students:ids.length});
   return response({course:r.rows[0]});
  }
  if(path==='/instructor/assessments'&&method==='GET')return response({assessments:(await query('SELECT a.*,c.title AS course_title,c.start_date AS course_start,c.end_date AS course_end,(SELECT count(*) FROM assessment_results r WHERE r.assessment_id=a.id) AS result_count FROM assessments a JOIN courses c ON c.id=a.course_id WHERE c.deleted_at IS NULL AND (c.owner_id=$1 OR $2=true) ORDER BY a.created_at DESC',[session.id,session.role==='admin'])).rows});

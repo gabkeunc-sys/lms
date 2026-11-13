@@ -4,7 +4,7 @@ const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>'
 const coursePeriod=x=>{const s=x.course_start||x.start_date,e=x.course_end||x.end_date;if(!s&&!e)return '';const f=d=>d?String(d).slice(0,10).replaceAll('-','.'):'미정';return ` (${f(s)} ~ ${f(e)})`;};
 // Marks every AI-powered feature with the same badge.
 const AI_MARK='<span class="ai-mark" title="AI 기능" aria-label="AI 기능">AI</span>';
-const AI_VIEWS=['ai-settings','teach-guidance','guidance','results'];
+const AI_VIEWS=['ai-settings','ai-usage','teach-guidance','guidance','results'];
 const courseName=x=>escape(x.course_title)+escape(coursePeriod(x));
 const date=s=>new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul'}).format(new Date(s));
 async function api(path,options={}){
@@ -13,8 +13,8 @@ async function api(path,options={}){
  if(!response.ok){const e=new Error(data.error||'요청을 처리하지 못했습니다.');e.status=response.status;throw e;}return data;
 }
 function toast(text){$('#toast').textContent=text;$('#toast').hidden=false;setTimeout(()=>$('#toast').hidden=true,3500);}
-const menuLabels={home:'나의 학습 공간',assessments:'시험·미니퀴즈',grades:'성적 대시보드',path:'러닝 패스',guidance:'학습 방향',assignments:'과제',profile:'내 정보',password:'비밀번호 변경',dashboard:'운영 현황',schedule:'운영 일정','learn-schedule':'학습 일정',members:'회원 관리','ai-settings':'AI 채점 설정'};
-const ICONS={schedule:'M4 5h16v15H4zM4 10h16M8 3v4M16 3v4M7 14h5M9 17h7','teach-schedule':'M4 5h16v15H4zM4 10h16M8 3v4M16 3v4M7 14h5M9 17h7','learn-schedule':'M4 5h16v15H4zM4 10h16M8 3v4M16 3v4M7 14h5M9 17h7',dashboard:'M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z',home:'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',assessments:'M9 4h6M8 3h8v4H8zM6 5H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1M8 12h8M8 16h5',grades:'M4 20V10M10 20V4M16 20v-7M22 20H2',path:'M5 6a2 2 0 1 0 0 .01M19 18a2 2 0 1 0 0 .01M7 6h6a3 3 0 0 1 0 6h-2a3 3 0 0 0 0 6h6',guidance:'M12 2l3 7 7 .5-5.5 4.5L18 21l-6-3.8L6 21l1.5-7L2 9.5 9 9z',assignments:'M4 4h16v16H4zM8 9h8M8 13h8M8 17h4',members:'M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M22 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8','ai-settings':'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2','teach-home':'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',courses:'M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2zM4 21V5M8 7h8',exams:'M9 4h6M8 3h8v4H8zM6 5H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1M8 12h8M8 16h5',results:'M9 11l3 3 8-8M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11','teach-guidance':'M12 2l3 7 7 .5-5.5 4.5L18 21l-6-3.8L6 21l1.5-7L2 9.5 9 9z'};
+const menuLabels={home:'나의 학습 공간',assessments:'시험·미니퀴즈',grades:'성적 대시보드',path:'러닝 패스',guidance:'학습 방향',assignments:'과제',profile:'내 정보',password:'비밀번호 변경',dashboard:'운영 현황',schedule:'운영 일정','learn-schedule':'학습 일정',members:'회원 관리','ai-settings':'AI 채점 설정','admin-courses':'과정 개설·배정',risk:'위험 학생',quality:'강사 운영 품질','ai-usage':'AI 사용량·비용',notices:'공지·알림',reports:'보고서 내보내기',activity:'활동 로그','learn-notices':'공지·알림'};
+const ICONS={'admin-courses':'M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2zM4 21V5M12 7v6M9 10h6',risk:'M12 3l10 18H2zM12 10v5M12 18v.01',quality:'M12 3l2.5 5 5.5.8-4 3.9 1 5.5-5-2.7-5 2.7 1-5.5-4-3.9 5.5-.8zM4 21h16','ai-usage':'M4 20V10M9 20V4M14 20v-7M19 20v-12M2 20h20',notices:'M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0','teach-notices':'M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0','learn-notices':'M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0',reports:'M6 2h9l5 5v15H6zM14 2v6h6M9 13h6M9 17h6M9 9h2',activity:'M3 12h4l3-8 4 16 3-8h4',schedule:'M4 5h16v15H4zM4 10h16M8 3v4M16 3v4M7 14h5M9 17h7','teach-schedule':'M4 5h16v15H4zM4 10h16M8 3v4M16 3v4M7 14h5M9 17h7','learn-schedule':'M4 5h16v15H4zM4 10h16M8 3v4M16 3v4M7 14h5M9 17h7',dashboard:'M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z',home:'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',assessments:'M9 4h6M8 3h8v4H8zM6 5H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1M8 12h8M8 16h5',grades:'M4 20V10M10 20V4M16 20v-7M22 20H2',path:'M5 6a2 2 0 1 0 0 .01M19 18a2 2 0 1 0 0 .01M7 6h6a3 3 0 0 1 0 6h-2a3 3 0 0 0 0 6h6',guidance:'M12 2l3 7 7 .5-5.5 4.5L18 21l-6-3.8L6 21l1.5-7L2 9.5 9 9z',assignments:'M4 4h16v16H4zM8 9h8M8 13h8M8 17h4',members:'M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3 3 0 1 0 0-6 3 3 0 0 0 0 6M22 19v-1a4 4 0 0 0-3-3.9M16 4.1a3 3 0 0 1 0 5.8','ai-settings':'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2','teach-home':'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',courses:'M4 5a2 2 0 0 1 2-2h14v16H6a2 2 0 0 0-2 2zM4 21V5M8 7h8',exams:'M9 4h6M8 3h8v4H8zM6 5H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-1M8 12h8M8 16h5',results:'M9 11l3 3 8-8M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11','teach-guidance':'M12 2l3 7 7 .5-5.5 4.5L18 21l-6-3.8L6 21l1.5-7L2 9.5 9 9z'};
 const navIcon=key=>`<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[key]||ICONS.home}"/></svg>`;
 async function loadNavCounts(teaching){
  const set=(key,n)=>{const el=document.querySelector(`[data-count="${key}"]`);if(el){el.textContent=n;el.hidden=!n;}};
@@ -24,7 +24,7 @@ async function loadNavCounts(teaching){
  }catch{}
 }
 // URL routing: every screen has its own path, so refresh and back/forward keep the current screen.
-const ROUTES={dashboard:'/admin',schedule:'/admin/schedule','teach-schedule':'/teach/schedule','learn-schedule':'/learn/schedule',members:'/admin/members','ai-settings':'/admin/ai-settings','teach-home':'/teach',courses:'/teach/courses',exams:'/teach/exams',results:'/teach/results','teach-guidance':'/teach/guidance',home:'/learn',assessments:'/learn/assessments',grades:'/learn/grades',path:'/learn/path',guidance:'/learn/guidance',assignments:'/learn/assignments',profile:'/account',password:'/account/password',login:'/login',register:'/register'};
+const ROUTES={dashboard:'/admin',schedule:'/admin/schedule','teach-schedule':'/teach/schedule','learn-schedule':'/learn/schedule',members:'/admin/members','ai-settings':'/admin/ai-settings','admin-courses':'/admin/courses',risk:'/admin/risk',quality:'/admin/quality','ai-usage':'/admin/ai-usage',notices:'/admin/notices',reports:'/admin/reports',activity:'/admin/activity','teach-notices':'/teach/notices','learn-notices':'/learn/notices','teach-home':'/teach',courses:'/teach/courses',exams:'/teach/exams',results:'/teach/results','teach-guidance':'/teach/guidance',home:'/learn',assessments:'/learn/assessments',grades:'/learn/grades',path:'/learn/path',guidance:'/learn/guidance',assignments:'/learn/assignments',profile:'/account',password:'/account/password',login:'/login',register:'/register'};
 const PATH_VIEWS=Object.fromEntries(Object.entries(ROUTES).map(([k,v])=>[v,k]));
 const currentTarget=()=>PATH_VIEWS[location.pathname.replace(/\/+$/,'')]||'';
 function navigate(target,{replace=false}={}){const path=ROUTES[target]||'/';if(location.pathname!==path)history[replace?'replaceState':'pushState']({},'',path);routeUser();}
@@ -42,12 +42,19 @@ function routeUser(){
  const target=currentTarget();
  if(['admin','instructor'].includes(user.role)&&Object.hasOwn(teacherLabels,target)){view=target;return teacherPage();}
  if(user.role==='instructor'&&!Object.hasOwn(menuLabels,target)){view='teach-home';return teacherPage();}
- const learnerOnly=['home','assessments','grades','path','guidance','assignments','learn-schedule'];
- view=Object.hasOwn(menuLabels,target)&&!(['dashboard','schedule','members','ai-settings'].includes(target)&&user.role!=='admin')&&!(user.role==='admin'&&learnerOnly.includes(target))?target:(user.role==='admin'?'dashboard':'home');
+ const learnerOnly=['home','assessments','grades','path','guidance','assignments','learn-schedule','learn-notices'];
+ view=Object.hasOwn(menuLabels,target)&&!(['dashboard','schedule','members','ai-settings','admin-courses','risk','quality','ai-usage','notices','reports','activity'].includes(target)&&user.role!=='admin')&&!(user.role==='admin'&&learnerOnly.includes(target))?target:(user.role==='admin'?'dashboard':'home');
  if(view==='ai-settings'){if(user.role!=='admin'){view='home';return renderHome();}return renderAISettings();}
  if(view==='dashboard')return renderAdminDashboard();
  if(view==='schedule')return renderAdminSchedule();
  if(view==='members')return renderMembers();
+ if(view==='admin-courses')return renderAdminCourses();
+ if(view==='risk')return renderRisk();
+ if(view==='quality')return renderQuality();
+ if(view==='ai-usage')return renderAIUsage();
+ if(view==='notices'||view==='learn-notices')return renderNotices();
+ if(view==='reports')return renderReports();
+ if(view==='activity')return renderActivity();
  if(view==='home')return user.role==='student'?renderStudentDashboard():renderHome();
  if(view==='profile')return renderProfile();
  if(view==='password')return renderPassword();
@@ -61,7 +68,7 @@ function routeUser(){
 function shell(){
  document.body.classList.toggle('public-page',!user);document.body.classList.remove('landing-page');
  const teaching=user&&(user.role==='instructor'||(user.role==='admin'&&Object.hasOwn(teacherLabels,view)));
- const groups=teaching?[['teach-home'],['courses','exams','teach-schedule'],['results','teach-guidance']]:user?.role==='admin'?[['dashboard','schedule'],['members'],['ai-settings']]:[['home'],['assessments','grades','path'],['learn-schedule','guidance','assignments']];
+ const groups=teaching?[['teach-home','teach-notices'],['courses','exams','teach-schedule'],['results','teach-guidance']]:user?.role==='admin'?[['dashboard','schedule','notices'],['admin-courses','members','risk'],['quality','reports','activity'],['ai-settings','ai-usage']]:[['home','learn-notices'],['assessments','grades','path'],['learn-schedule','guidance','assignments']];
  const menus=groups.flat();
  const signature=user?`${user.id}|${user.role}|${teaching}|${menus.join()}`:'public';
  if(signature!==navSignature){navSignature=signature;

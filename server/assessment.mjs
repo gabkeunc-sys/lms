@@ -1,6 +1,7 @@
 import {imagesForTexts} from './images.mjs';
 import {randomUUID} from 'node:crypto';
 import {generate} from './ai.mjs';
+import {logActivity,meteredAI} from './ops.mjs';
 import {NOW,nowPlus} from './db.mjs';
 const isText=q=>q.type==='text';
 const safeQuestions=qs=>qs.map(q=>({type:q.type||'choice',prompt:q.prompt,points:q.points,tag:q.tag,...(!isText(q)?{options:q.options}:{})}));
@@ -29,9 +30,10 @@ export async function assessmentAPI({path,method,body,session,query,response,fai
    if(!limit.rows.length)return fail('분석 요청을 처리 중입니다. 10초 후 다시 시도하세요.',429);
    const redact=s=>s.replaceAll(r.email,'[이메일 제외]').replaceAll(r.name,'[이름 제외]').replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,'[이메일 제외]').replace(/01[016789][- ]?\d{3,4}[- ]?\d{4}/g,'[연락처 제외]');
    const images=await imagesForTexts(query,[q.prompt,q.model_answer,q.rubric,body.answer]);
-   let proposed;try{proposed=await generate(setting,{question:redact(q.prompt),exemplar:redact(q.model_answer),rubric:redact(q.rubric),answer:redact(body.answer),maxPoints:q.points,images});}catch(e){return fail(e.message,e.status||502);}
+   let proposed;try{proposed=await meteredAI(query,setting,'grading',session.id,()=>generate(setting,{question:redact(q.prompt),exemplar:redact(q.model_answer),rubric:redact(q.rubric),answer:redact(body.answer),maxPoints:q.points,images}));}catch(e){return fail(e.message,e.status||502);}
    const grading=[...r.grading];grading[index]={...proposed,status:'proposed',provider:setting.provider||'gemini',model:setting.model,analyzed_at:new Date().toISOString()};
    const changed=await query("UPDATE assessment_results SET grading=$1,grading_status='review',revision=revision+1 WHERE id=$2 AND revision=$3 RETURNING id",[JSON.stringify(grading),id,r.revision]);
+   if(changed.rows.length)await logActivity(query,session.id,'grade.ai_proposal',r.id,{index});
    return changed.rows.length?response({ok:true}):fail('성적이 변경되었습니다. 다시 열어 확인하세요.',409);
   }
   if(action==='confirm'){
@@ -43,7 +45,10 @@ export async function assessmentAPI({path,method,body,session,query,response,fai
      grading.push({...r.grading[i],score:g.score,feedback:g.feedback,status:'confirmed',reviewed_by:session.id,reviewed_at:new Date().toISOString()});score+=g.score;
     }else{const points=r.answers[i]===question.answer?question.points:0;grading.push({score:points,status:'confirmed'});score+=points;}
    }
-   const changed=await query("UPDATE assessment_results SET grading=$1,score=$2,grading_status='confirmed',revision=revision+1 WHERE id=$3 AND revision=$4 RETURNING id",[JSON.stringify(grading),score,id,r.revision]);
+   // How often the instructor changed an AI-proposed score, for the instructor quality report.
+   let aiUsed=0,aiChanged=0;r.questions.forEach((x,i)=>{const prev=r.grading[i];if(isText(x)&&prev?.status==='proposed'){aiUsed++;if(prev.score!==grading[i].score)aiChanged++;}});
+   const changed=await query("UPDATE assessment_results SET grading=$1,score=$2,grading_status='confirmed',confirmed_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),revision=revision+1 WHERE id=$3 AND revision=$4 RETURNING id",[JSON.stringify(grading),score,id,r.revision]);
+   if(changed.rows.length)await logActivity(query,session.id,'grade.confirm',r.id,{score,ai_used:aiUsed,ai_changed:aiChanged});
    return changed.rows.length?response({ok:true}):fail('성적이 변경되었습니다. 다시 열어 확인하세요.',409);
   }
  }
@@ -72,7 +77,7 @@ export async function assessmentAPI({path,method,body,session,query,response,fai
   let score=0;const grading=[];
   for(let i=0;i<a.questions.length;i++){const q=a.questions[i],v=body.answers[i];if(isText(q)){if(typeof v!=='string'||v.length>10000)return fail('주관식 답안은 10,000자까지 입력할 수 있습니다.');grading.push({status:'pending'});}else{if(v!==null&&(!Number.isInteger(v)||v<0||v>3))return fail('객관식 답안을 확인하세요.');const points=v===q.answer?q.points:0;score+=points;grading.push({score:points,status:'confirmed'});}}
   const resultId=randomUUID(),status=a.questions.some(isText)?'pending':'confirmed';
-  const saved=await query('INSERT INTO assessment_results(id,assessment_id,student_id,questions,answers,score,total,duration_seconds,origin,grading,grading_status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(assessment_id,student_id) DO NOTHING RETURNING id',[resultId,id,session.id,JSON.stringify(a.questions),JSON.stringify(body.answers),score,a.questions.reduce((s,q)=>s+q.points,0),Math.max(0,Math.floor((now-Date.parse(t.started_at))/1000)),'submitted',JSON.stringify(grading),status]);
+  const saved=await query(`INSERT INTO assessment_results(id,assessment_id,student_id,questions,answers,score,total,duration_seconds,origin,grading,grading_status,confirmed_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,CASE WHEN $11='confirmed' THEN ${NOW} END) ON CONFLICT(assessment_id,student_id) DO NOTHING RETURNING id`,[resultId,id,session.id,JSON.stringify(a.questions),JSON.stringify(body.answers),score,a.questions.reduce((s,q)=>s+q.points,0),Math.max(0,Math.floor((now-Date.parse(t.started_at))/1000)),'submitted',JSON.stringify(grading),status]);
   return saved.rows.length?response({id:resultId}):fail('이미 제출한 시험입니다.',409);
  }
  return fail('허용되지 않는 요청입니다.',405);

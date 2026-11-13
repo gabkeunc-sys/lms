@@ -6,6 +6,7 @@ import {settingsAPI} from './ai.mjs';
 import {resultsAPI} from './results.mjs';
 import {instructorAPI} from './instructor.mjs';
 import {adminOverviewAPI,scheduleAPI} from './admin.mjs';
+import {opsAPI,logActivity} from './ops.mjs';
 import { randomBytes, randomUUID, timingSafeEqual, createHash, scrypt as scryptCallback } from 'node:crypto';
 import { promisify } from 'node:util';
 const scrypt = promisify(scryptCallback);
@@ -51,7 +52,7 @@ export function createHandler(db) {
    let body={};
    if(method!=='GET') {
     const text=await request.text();
-    if(text.length>(/^\/api\/(instructor|student)\//.test(url.pathname)?600000:4096)) return fail('입력 크기를 초과했습니다.',413);
+    if(text.length>(/^\/api\/(instructor|student)\//.test(url.pathname)?600000:/^\/api\/(admin|announcements)/.test(url.pathname)?200000:4096)) return fail('입력 크기를 초과했습니다.',413);
     try {body=JSON.parse(text);} catch {return fail('올바른 입력이 아닙니다.');}
     if(!body || typeof body!=='object' || Array.isArray(body)) return fail('올바른 입력이 아닙니다.');
    }
@@ -81,12 +82,13 @@ export function createHandler(db) {
     }
     const user=(await query('SELECT * FROM app_users WHERE email=$1',[email])).rows[0];
     const valid=await verify(password,user?.password_hash||'');
-    if(!user||!valid||!user.active) return fail('이메일 또는 비밀번호가 올바르지 않거나 비활성 계정입니다.',401);
+    if(!user||!valid||!user.active){if(user)await logActivity(query,user.id,'auth.login_failed',user.email,{ip:context.ip||null});return fail('이메일 또는 비밀번호가 올바르지 않거나 비활성 계정입니다.',401);}
     if(isLegacy(user.password_hash)) await query('UPDATE app_users SET password_hash=$1 WHERE id=$2 AND password_hash=$3',[await hashPassword(password),user.id,user.password_hash]);
     const fresh=randomBytes(32).toString('hex');
     if(token) await query('DELETE FROM app_sessions WHERE token_hash=$1',[digest(token)]);
     await query(`DELETE FROM app_sessions WHERE expires_at<${NOW}`);
     await query(`INSERT INTO app_sessions(token_hash,user_id,expires_at) VALUES($1,$2,${nowPlus('+8 hours')})`,[digest(fresh),user.id]);
+    await logActivity(query,user.id,'auth.login',user.email,{role:user.role});
     return response({user:publicUser(user)},200,{'Set-Cookie':`${COOKIE}=${fresh}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=28800`});
    }
    if(path==='/me/password' && method==='POST') {
@@ -105,6 +107,7 @@ export function createHandler(db) {
    if(path==='/instructor/images')return await imagesAPI({method,body,session,query,response,fail});
    if(path==='/student/learning-path'||path==='/student/class-stats'||/^\/instructor\/(learning-path\/[^/]+|courses\/[^/]+\/modules)$/.test(path))return await pathAPI({path,method,body,session,query,response,fail});
    if(/^\/(instructor|student)\/guidance(?:\/generate|\/prompts)?$/.test(path))return await guidanceAPI({path,method,body,session,query,response,fail});
+   if(/^\/(announcements|notifications)(\/|$)/.test(path)||/^\/admin\/(courses|risk|quality|ai-usage|reports|activity)(\/|$)/.test(path)) return await opsAPI({path,method,body,session,query,response,fail,url});
    if(/^\/(admin|instructor|student)\/schedule$/.test(path)) return await scheduleAPI({path,method,session,query,response,fail});
    if(path==='/admin/overview') return await adminOverviewAPI({method,session,query,response,fail});
    if(path.startsWith('/admin/ai')) return await settingsAPI({path,method,body,session,query,response,fail});
@@ -129,6 +132,7 @@ export function createHandler(db) {
     if(resetMatch && method==='POST') {
      if(typeof body.password!=='string'||body.password.length<10||body.password.length>128) return fail('비밀번호는 10~128자로 입력하세요.');
      const result=await query(`UPDATE app_users SET password_hash=$1 WHERE id=$2 AND role='student' RETURNING id`,[await hashPassword(body.password),resetMatch[1]]);
+     if(result.rows.length)await logActivity(query,session.id,'member.password_reset',resetMatch[1]);
      if(!result.rows.length) return fail('학생 계정만 변경할 수 있습니다.',400);
      await query('DELETE FROM app_sessions WHERE user_id=$1',[resetMatch[1]]);
      return response({ok:true});
@@ -166,6 +170,7 @@ export function createHandler(db) {
      }
      if(typeof body.active!=='boolean') return fail('계정 상태를 지정하세요.');
      const updated=await query(`UPDATE app_users SET active=$1 WHERE id=$2 AND role='student' RETURNING id`,[body.active,match[1]]);
+     if(updated.rows.length)await logActivity(query,session.id,body.active?'member.activate':'member.deactivate',match[1]);
      if(!updated.rows.length) return fail('학생 계정만 변경할 수 있습니다.',400);
      if(!body.active) await query('DELETE FROM app_sessions WHERE user_id=$1',[match[1]]);
      return response({ok:true});
@@ -173,7 +178,7 @@ export function createHandler(db) {
    }
    return fail('요청한 기능을 찾을 수 없습니다.',404);
   } catch(error) {
-   console.error('LMS request failed',{code:error.code||'internal'});
+   console.error('LMS request failed',{code:error.code||'internal'});if(process.env.LMS_DEBUG)console.error(error);
    return fail('서버 연결을 확인해 주세요. 잠시 후 다시 시도하세요.',503);
   }
  };

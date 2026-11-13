@@ -1,5 +1,5 @@
 let teacherCourses=[],teacherAssessments=[],examDraft=null,questionIndex=0;
-const teacherLabels={'teach-home':'강사 홈',courses:'내 과정',exams:'시험·미니퀴즈',results:'성적·채점','teach-guidance':'학습 방향 지도','teach-schedule':'강의 일정'};
+const teacherLabels={'teach-home':'강사 홈',courses:'내 과정',exams:'시험·미니퀴즈',results:'성적·채점','teach-guidance':'학습 방향 지도','teach-schedule':'강의 일정','teach-notices':'공지·알림'};
 const roleLabel=role=>({admin:'관리자',instructor:'강사',student:'학생'}[role]||role);
 const gradingLabel=s=>({pending:'채점 대기',review:'AI 제안 검토 중',confirmed:'확정'}[s]||s);
 function teacherHomeLists(results){
@@ -11,6 +11,7 @@ function teacherHomeLists(results){
 async function teacherPage(){
  if(view==='teach-guidance')return renderTeacherGuidance();
  if(view==='teach-schedule')return renderSchedule('instructor');
+ if(view==='teach-notices')return renderNotices();
  if(view==='results')return renderResults(true);
  shell();startLoading('강사 공간을 불러오고 있습니다…');
  try{
