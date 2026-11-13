@@ -1,0 +1,21 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {randomUUID} from 'node:crypto';
+import {createHandler,hashPassword} from '../server/auth.mjs';import {createTestDatabase} from './helpers/d1.mjs';
+test('admin overview reports instructors, students and assessment operations, admin only',async()=>{
+ const db=await createTestDatabase();const hash=await hashPassword('Overview-pass-2026');
+ for(const [role,email] of [['admin','admin@example.com'],['student','learner@example.com']])await db.query('INSERT INTO app_users(id,name,email,password_hash,role) VALUES($1,$2,$3,$4,$5)',[randomUUID(),role,email,hash,role]);
+ const handler=createHandler(db);
+ const login=async email=>(await handler(new Request('https://lms.test/api/login',{method:'POST',headers:{origin:'https://lms.test','content-type':'application/json'},body:JSON.stringify({email,password:'Overview-pass-2026'})}),{ip:randomUUID()})).headers.get('set-cookie').split(';')[0];
+ const get=cookie=>handler(new Request('https://lms.test/api/admin/overview',{headers:{cookie}}),{ip:'x'});
+ assert.equal((await get('')).status,401);
+ assert.equal((await get(await login('learner@example.com'))).status,403);
+ const res=await get(await login('admin@example.com'));assert.equal(res.status,200);
+ const data=await res.json();
+ assert.equal(data.summary.instructors,1);assert.equal(data.summary.students,10);assert.equal(data.summary.assessments,3);
+ const teacher=data.instructors.find(i=>i.name==='조현우');
+ assert.equal(teacher.courses,1);assert.equal(teacher.students,9);assert.equal(teacher.assessments,3);assert.equal(teacher.submissions,18);assert.equal(teacher.pending,9);
+ const essay=data.assessments.find(a=>a.id==='9aa97137-bc25-4b1e-bc2e-6b520dd08772');
+ assert.equal(essay.takers,9);assert.equal(essay.not_taken,0);assert.equal(essay.pending,9);assert.equal(essay.text_questions,1);
+ const exam=data.assessments.find(a=>a.id==='ad06a855-9a44-4dfa-aeda-43abfe37dd06');assert.equal(exam.confirmed,9);assert.ok(exam.average>0);
+ const course=data.courses[0];assert.equal(course.enrolled,9);assert.equal(course.participation,100);
+ assert.equal(data.students.find(s=>s.email==='learner@example.com').courses,0);
+});

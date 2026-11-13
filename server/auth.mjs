@@ -3,6 +3,7 @@ import {assessmentAPI} from './assessment.mjs';
 import {settingsAPI} from './ai.mjs';
 import {resultsAPI} from './results.mjs';
 import {instructorAPI} from './instructor.mjs';
+import {adminOverviewAPI} from './admin.mjs';
 import { randomBytes, randomUUID, timingSafeEqual, createHash, scrypt as scryptCallback } from 'node:crypto';
 import { promisify } from 'node:util';
 const scrypt = promisify(scryptCallback);
@@ -100,6 +101,7 @@ export function createHandler(db) {
     return response({ok:true},200,{'Set-Cookie':`${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`});
    }
    if(/^\/(instructor|student)\/guidance(?:\/generate)?$/.test(path))return await guidanceAPI({path,method,body,session,query,response,fail});
+   if(path==='/admin/overview') return await adminOverviewAPI({method,session,query,response,fail});
    if(path.startsWith('/admin/ai')) return await settingsAPI({path,method,body,session,query,response,fail});
    if(/^\/(instructor|student)\/assessments(?:\/|$)/.test(path)&&!(path==='/instructor/assessments')) return await assessmentAPI({path,method,body,session,query,response,fail});
    if(/^\/instructor\/results\/[^/]+\/(analyze|confirm)$/.test(path)) return await assessmentAPI({path,method,body,session,query,response,fail});

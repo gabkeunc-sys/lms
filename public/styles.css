@@ -39,3 +39,15 @@ nav button:hover{background:#3d2b1f}
 .home-lists .table-wrap{max-height:none}
 @media(max-width:1100px){.home-lists{grid-template-columns:1fr}}
 @media(max-width:1000px){.cards{grid-template-columns:repeat(2,1fr)}}
+.admin-cards{grid-template-columns:repeat(4,1fr)}
+@media(max-width:1000px){.admin-cards{grid-template-columns:repeat(2,1fr)}}
+.admin-section{margin-bottom:24px}
+.sub-heading{font-size:15px;margin:26px 0 10px;color:var(--ink)}
+.sub-heading small{font-weight:400;color:var(--text);font-size:12px;margin-left:6px}
+.rate{display:flex;align-items:center;gap:10px;min-width:140px}
+.rate-track{flex:1;height:8px;border-radius:6px;background:#f1ebe1;overflow:hidden}
+.rate-fill{height:100%;background:linear-gradient(90deg,var(--yellow),var(--orange));border-radius:6px}
+.rate span{font-size:12px;color:var(--text);min-width:44px;text-align:right}
+.grading-bar{display:flex;height:10px;border-radius:6px;overflow:hidden;min-width:160px;background:#f1ebe1}
+.g-confirmed{background:#2f9e5b}.g-review{background:var(--orange)}.g-pending{background:var(--yellow)}
+.grading-legend{display:block;margin-top:6px;color:var(--text);font-size:11px}
