@@ -140,3 +140,10 @@ body.public-page .learning-preview{background:#fff;border-color:var(--line)}
 #prompt-editor hr{border:0;border-top:1px solid var(--line);margin:18px 0}
 #guidance-prompt{margin-bottom:12px}
 @media(max-width:740px){.prompt-grid{grid-template-columns:1fr}}
+
+/* AI mark: shown on every AI-powered feature */
+.ai-mark{display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 6px;border-radius:4px;background:linear-gradient(90deg,var(--yellow),var(--orange));color:#fff;font-size:10px;font-weight:800;letter-spacing:.4px;line-height:16px;vertical-align:middle;white-space:nowrap}
+.ai-mark::before{content:'✦';font-size:9px}
+button .ai-mark,label .ai-mark,summary .ai-mark{margin-left:0;margin-right:4px}
+h1 .ai-mark{font-size:11px;padding:2px 8px}
+nav button .ai-mark{margin-left:6px;margin-right:0}

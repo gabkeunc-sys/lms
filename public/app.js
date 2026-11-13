@@ -2,6 +2,9 @@ const $=s=>document.querySelector(s);
 let user=null,mode='login',page=1,search='',view='home';
 const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const coursePeriod=x=>{const s=x.course_start||x.start_date,e=x.course_end||x.end_date;if(!s&&!e)return '';const f=d=>d?String(d).slice(0,10).replaceAll('-','.'):'미정';return ` (${f(s)} ~ ${f(e)})`;};
+// Marks every AI-powered feature with the same badge.
+const AI_MARK='<span class="ai-mark" title="AI 기능" aria-label="AI 기능">AI</span>';
+const AI_VIEWS=['ai-settings','teach-guidance','guidance','results'];
 const courseName=x=>escape(x.course_title)+escape(coursePeriod(x));
 const date=s=>new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul'}).format(new Date(s));
 async function api(path,options={}){
@@ -58,7 +61,7 @@ function shell(){
  const menus=teaching?['teach-home','courses','exams','results','teach-guidance']:user?.role==='admin'?['dashboard','members','ai-settings']:['home','assessments','grades','guidance','assignments'];
  const signature=user?`${user.id}|${user.role}|${teaching}|${menus.join()}`:'public';
  if(signature!==navSignature){navSignature=signature;
- $('#nav').innerHTML=user?menus.map((key,i)=>`<button data-view="${key}" class="${view===key?'active':''}" ${view===key?'aria-current="page"':''}><span class="nav-icon" aria-hidden="true">${navIcon(key)}</span><span class="nav-text">${teacherLabels[key]||menuLabels[key]}</span><span class="nav-count" data-count="${key}" hidden></span></button>`).join(''):'';
+ $('#nav').innerHTML=user?menus.map((key,i)=>`<button data-view="${key}" class="${view===key?'active':''}" ${view===key?'aria-current="page"':''}><span class="nav-icon" aria-hidden="true">${navIcon(key)}</span><span class="nav-text">${teacherLabels[key]||menuLabels[key]}${AI_VIEWS.includes(key)?AI_MARK:''}</span><span class="nav-count" data-count="${key}" hidden></span></button>`).join(''):'';
  if(user)loadNavCounts(teaching);
  $('#account').innerHTML=user?`${user.role==='admin'?`<button class="secondary" data-view="${teaching?'dashboard':'teach-home'}">${teaching?'관리자 화면':'강사 화면'}</button>`:''}<span class="pill ${user.role==='admin'?'admin':''}">${roleLabel(user.role)}</span><details class="account-menu"><summary>${escape(user.name)} <span aria-hidden="true">⌄</span></summary><div class="account-options"><button data-view="profile">내 정보</button>${['admin','instructor'].includes(user.role)?'<button data-view="teach-home">강사 화면으로 전환</button>':''}${user.role==='admin'?'<button data-view="members">관리자 화면으로 전환</button>':''}<button data-view="password">비밀번호 변경</button><button id="logout">로그아웃</button></div></details>`:'';
  $('#logout')?.addEventListener('click',async()=>{try{await api('/logout',{method:'POST',body:'{}'});user=null;navSignature=null;mode='login';page=1;search='';history.replaceState({},'','/');renderPublic();}catch(e){toast(e.message);}});
@@ -139,7 +142,7 @@ function renderLanding(){
  <h1 id="landing-title">배움의 기록이,<br><em>성장의 방향</em>이 됩니다.</h1>
  <p class="landing-description">매주의 평가로 이해도를 확인하고,<br>나에게 맞는 학습 방향을 찾아갑니다.</p>
  <div class="landing-actions"><a class="primary" href="#register">회원가입하고 시작하기 <span aria-hidden="true">→</span></a><a class="secondary" href="#login">로그인</a></div>
- <p class="landing-note">시험·미니퀴즈, 주관식 AI 채점, 성적 대시보드, 학습 방향 안내를 제공합니다.</p>
+ <p class="landing-note">시험·미니퀴즈, 주관식 AI 채점, 성적 대시보드, AI 학습 방향 안내를 제공합니다.</p>
  </section>
  <section class="learning-preview" aria-labelledby="preview-title"><div class="preview-heading"><div><span class="eyebrow">한 걸음씩, 나의 속도로</span><h2 id="preview-title">배움길에서 할 수 있는 것</h2></div><span class="upcoming">지금 이용 가능</span></div>
  <div class="learning-steps"><article><span class="step-number">01</span><h3>주간 시험</h3><p>한 주 동안 배운 내용을 점검하고<br>이해도를 확인합니다.</p></article><article><span class="step-number">02</span><h3>미니퀴즈</h3><p>짧은 문제로 핵심 개념을 돌아보고<br>배운 내용을 다집니다.</p></article><article><span class="step-number">03</span><h3>학습 방향 안내</h3><p>평가 기록을 바탕으로 부족한 부분과<br>다음 학습 목표를 찾아갑니다.</p></article></div>

@@ -4,7 +4,7 @@ const rateBar = v => v === null || v === undefined ? '<span class="muted">-</spa
 function gradingBar(a) {
  if (!a.takers) return '<span class="muted">응시 없음</span>';
  const part = (n, cls) => n ? `<div class="${cls}" data-flex="${n}" title="${n}건"></div>` : '';
- return `<div class="grading-bar">${part(a.confirmed, 'g-confirmed')}${part(a.review, 'g-review')}${part(a.pending, 'g-pending')}</div><small class="grading-legend">확정 ${a.confirmed} · AI 검토 ${a.review} · 대기 ${a.pending}</small>`;
+ return `<div class="grading-bar">${part(a.confirmed, 'g-confirmed')}${part(a.review, 'g-review')}${part(a.pending, 'g-pending')}</div><small class="grading-legend">확정 ${a.confirmed} · ${AI_MARK} 검토 ${a.review} · 대기 ${a.pending}</small>`;
 }
 async function renderAdminDashboard() {
  shell();
@@ -19,7 +19,7 @@ async function renderAdminDashboard() {
    <section class="panel stat"><h2>강사 · 개설 과정</h2><div class="value">${s.instructors} · ${s.courses}</div><p>진행 중 과정 ${courses.filter(c => c.status === 'active').length}개</p></section>
    <section class="panel stat"><h2>학생</h2><div class="value">${s.students}</div><p>활성 ${s.active_students}명</p></section>
    <section class="panel stat"><h2>시험 응시율</h2><div class="value">${s.participation === null ? '-' : s.participation + '%'}</div><p>공개 평가 ${s.published_assessments}개 · 제출 ${s.submissions}건</p></section>
-   <section class="panel stat highlight"><h2>채점 진행 필요</h2><div class="value">${s.pending + s.review}</div><p>채점 대기 ${s.pending} · AI 검토 ${s.review}</p></section>
+   <section class="panel stat highlight"><h2>채점 진행 필요 ${AI_MARK}</h2><div class="value">${s.pending + s.review}</div><p>채점 대기 ${s.pending} · AI 검토 ${s.review}</p></section>
   </div>
   <section class="panel admin-section"><div class="section-heading"><div><h2>강사 현황</h2><p>강사별 담당 과정, 수강생, 평가와 채점 대기 건수입니다.</p></div><button class="secondary" data-view="members">회원 관리</button></div>
    ${table(['강사', '과정', '수강생', '평가', '제출', '채점 대기'], instructors.map(i => `<tr><td><strong>${escape(i.name)}</strong><br><small>${escape(i.email)}</small></td><td>${i.courses}</td><td>${i.students}</td><td>${i.assessments}</td><td>${i.submissions}</td><td>${i.pending ? `<span class="pill status-pending">${i.pending}건</span>` : '<span class="pill status-confirmed">없음</span>'}</td></tr>`), '등록된 강사가 없습니다.')}
