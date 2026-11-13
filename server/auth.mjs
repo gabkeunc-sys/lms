@@ -1,5 +1,6 @@
 import {guidanceAPI} from './guidance.mjs';
 import {pathAPI} from './path.mjs';
+import {imagesAPI} from './images.mjs';
 import {assessmentAPI} from './assessment.mjs';
 import {settingsAPI} from './ai.mjs';
 import {resultsAPI} from './results.mjs';
@@ -101,6 +102,7 @@ export function createHandler(db) {
     await query('DELETE FROM app_sessions WHERE user_id=$1',[session.id]);
     return response({ok:true},200,{'Set-Cookie':`${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`});
    }
+   if(path==='/instructor/images')return await imagesAPI({method,body,session,query,response,fail});
    if(path==='/student/learning-path'||path==='/student/class-stats'||/^\/instructor\/(learning-path\/[^/]+|courses\/[^/]+\/modules)$/.test(path))return await pathAPI({path,method,body,session,query,response,fail});
    if(/^\/(instructor|student)\/guidance(?:\/generate|\/prompts)?$/.test(path))return await guidanceAPI({path,method,body,session,query,response,fail});
    if(path==='/admin/overview') return await adminOverviewAPI({method,session,query,response,fail});

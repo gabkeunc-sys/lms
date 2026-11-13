@@ -3,7 +3,7 @@ import {createHandler} from '../server/auth.mjs';
 import {createDatabase} from '../server/db.mjs';
 
 const SECURITY_HEADERS = {
- 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+ 'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
  'X-Content-Type-Options': 'nosniff',
  'Referrer-Policy': 'same-origin',
  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
@@ -19,6 +19,14 @@ export default {
  async fetch(request, env) {
   const url = new URL(request.url);
   if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
+  // Question images are public by unguessable id so <img> tags work everywhere.
+  const img = url.pathname.match(/^\/api\/images\/([a-f0-9-]{36})$/);
+  if (img && request.method === 'GET') {
+   const row = await env.DB.prepare('SELECT mime,data FROM question_images WHERE id=?1').bind(img[1]).first();
+   if (!row) return new Response('Not found', {status: 404});
+   const bin = Uint8Array.from(atob(row.data), c => c.charCodeAt(0));
+   return new Response(bin, {headers: {'Content-Type': row.mime, 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff'}});
+  }
   const response = await handlerFor(env)(request, {ip: request.headers.get('CF-Connecting-IP') || ''});
   const headers = new Headers(response.headers);
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value);

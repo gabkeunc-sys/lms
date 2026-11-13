@@ -1,3 +1,4 @@
+import {imagesForTexts} from './images.mjs';
 import {randomUUID} from 'node:crypto';
 import {generate} from './ai.mjs';
 import {NOW,nowPlus} from './db.mjs';
@@ -27,7 +28,8 @@ export async function assessmentAPI({path,method,body,session,query,response,fai
    const limit=await query(`INSERT INTO auth_limits(key,hits,expires_at) VALUES('ai-grading',1,${nowPlus('+10 seconds')}) ON CONFLICT(key) DO UPDATE SET hits=1,expires_at=${nowPlus('+10 seconds')} WHERE auth_limits.expires_at<${NOW} RETURNING hits`);
    if(!limit.rows.length)return fail('분석 요청을 처리 중입니다. 10초 후 다시 시도하세요.',429);
    const redact=s=>s.replaceAll(r.email,'[이메일 제외]').replaceAll(r.name,'[이름 제외]').replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,'[이메일 제외]').replace(/01[016789][- ]?\d{3,4}[- ]?\d{4}/g,'[연락처 제외]');
-   let proposed;try{proposed=await generate(setting,{question:redact(q.prompt),exemplar:redact(q.model_answer),rubric:redact(q.rubric),answer:redact(body.answer),maxPoints:q.points});}catch(e){return fail(e.message,e.status||502);}
+   const images=await imagesForTexts(query,[q.prompt,q.model_answer,q.rubric,body.answer]);
+   let proposed;try{proposed=await generate(setting,{question:redact(q.prompt),exemplar:redact(q.model_answer),rubric:redact(q.rubric),answer:redact(body.answer),maxPoints:q.points,images});}catch(e){return fail(e.message,e.status||502);}
    const grading=[...r.grading];grading[index]={...proposed,status:'proposed',provider:setting.provider||'gemini',model:setting.model,analyzed_at:new Date().toISOString()};
    const changed=await query("UPDATE assessment_results SET grading=$1,grading_status='review',revision=revision+1 WHERE id=$2 AND revision=$3 RETURNING id",[JSON.stringify(grading),id,r.revision]);
    return changed.rows.length?response({ok:true}):fail('성적이 변경되었습니다. 다시 열어 확인하세요.',409);
