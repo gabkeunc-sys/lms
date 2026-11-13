@@ -170,15 +170,20 @@ export async function learnAPI({path, method, body, session, query, response, fa
   const courses = await myCourses(query, sid), ids = courses.map(c => c.id), owners = [...new Set(courses.map(c => c.owner_id))];
   if (!ids.length) return response({concepts: rates, questions: []});
   const ph = ids.map((_, i) => '$' + (i + 1)).join(','), oh = owners.map((_, i) => '$' + (ids.length + i + 1)).join(',');
-  const bank = (await query(`SELECT id,concept,difficulty,question,course_id FROM question_bank WHERE deleted_at IS NULL AND (course_id IN (${ph}) OR (course_id IS NULL AND owner_id IN (${oh})))`, [...ids, ...owners])).rows.map(b => ({...b, question: j(b.question)})).filter(b => !isText(b.question) && b.question.options?.every(o => String(o).trim()));
+  const bank = (await query(`SELECT id,concept,difficulty,question,course_id FROM question_bank WHERE deleted_at IS NULL AND status<>'draft' AND (course_id IN (${ph}) OR (course_id IS NULL AND owner_id IN (${oh})))`, [...ids, ...owners])).rows.map(b => ({...b, question: j(b.question)})).filter(b => !isText(b.question) && b.question.options?.every(o => String(o).trim()));
   const want = String(url?.searchParams.get('concept') || '').trim() || null;
   const weak = rates.filter(c => c.rate < 80).map(c => c.concept);
   const pool = want ? bank.filter(b => b.concept === want) : bank;
   const score = b => (weak.includes(b.concept) ? 0 : 1) + Math.random();
-  const seen = new Set(), picked = [];
-  for (const b of pool.sort((a, b2) => score(a) - score(b2))) { const k = b.question.prompt; if (seen.has(k)) continue; seen.add(k); picked.push(b); if (picked.length >= 5) break; }
+  // Round-robin over enrolled courses (weak concepts first inside each), at most 2 questions per concept.
+  const groups = [...pool.sort((a, b2) => score(a) - score(b2)).reduce((m, b) => { const k = b.course_id || 'common'; (m.get(k) || m.set(k, []).get(k)).push(b); return m; }, new Map()).values()].sort(() => Math.random() - 0.5);
+  const seen = new Set(), perConcept = new Map(), picked = [], cap = want ? 5 : 2;
+  while (picked.length < 5 && groups.some(g => g.length)) for (const g of groups) {
+   while (g.length) { const b = g.shift(), k = b.question.prompt, c = b.concept || '기타'; if (seen.has(k) || (perConcept.get(c) || 0) >= cap) continue; seen.add(k); perConcept.set(c, (perConcept.get(c) || 0) + 1); picked.push(b); break; }
+   if (picked.length >= 5) break;
+  }
   const today = (await query(`SELECT count(*) AS n, sum(correct) AS ok FROM practice_attempts WHERE student_id=$1 AND source='practice' AND created_at>=strftime('%Y-%m-%dT%H:%M:%fZ','now','-7 days')`, [sid])).rows[0];
-  return response({concepts: rates, weak, questions: picked.map(b => ({id: b.id, concept: b.concept, difficulty: b.difficulty, prompt: b.question.prompt, options: b.question.options})), week: {n: Number(today.n || 0), ok: Number(today.ok || 0)}});
+  return response({concepts: rates, weak, questions: picked.map(b => ({id: b.id, course_title: courses.find(c => c.id === b.course_id)?.title || '', concept: b.concept, difficulty: b.difficulty, prompt: b.question.prompt, options: b.question.options})), week: {n: Number(today.n || 0), ok: Number(today.ok || 0)}});
  }
  if (path === '/student/practice/check' && method === 'POST') {
   if (typeof body.bank_id !== 'string' || body.bank_id.length > 90) return fail('문항을 확인하세요.');

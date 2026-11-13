@@ -106,38 +106,110 @@ async function renderAnalysis() {
 }
 
 // ---------- 문제 은행 ----------
-let bankFilter = {q: '', diff: '', type: '', course: ''};
+let bankFilter = {q: '', diff: '', type: '', course: '', status: '', view: 'list'};
+const BANK_COLS = ['과정', '개념', '난이도', '유형', '문제', '보기1', '보기2', '보기3', '보기4', '정답', '해설', '채점기준', '배점'];
+const bankLowFlags = f => (f || []).filter(x => /변별도|검토|너무 쉬움/.test(x));
+const bankStatus = b => b.status === 'draft' ? '<span class="op-act op-a-warn">검수 대기</span>' : b.status === 'reviewed' ? '<span class="op-act op-a-grade">✓ 검수 완료</span>' : '';
+const bankSource = b => b.source === 'ai' ? `<span class="op-act op-a-ai">${AI_MARK} 생성</span>` : b.source === 'exam' ? '<span class="op-act op-a-auth">시험에서</span>' : b.via === 'excel' ? '<span class="op-act op-a-course">엑셀</span>' : '';
+function xlsxSave(X, wb, name) { const blob = new Blob([X.write(wb, {type: 'array', bookType: 'xlsx'})], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
+function xlsxLoad() {
+ if (window.XLSX) return Promise.resolve(window.XLSX);
+ return new Promise((ok, no) => { const s = document.createElement('script'); s.src = '/vendor/xlsx.mini.min.js'; s.onload = () => ok(window.XLSX); s.onerror = () => no(new Error('엑셀 모듈을 불러오지 못했습니다.')); document.head.append(s); });
+}
+// Concept x difficulty counts (drafts excluded) for coverage; target per cell comes from the server.
+function bankCoverage(items, course) {
+ const m = new Map();
+ for (const b of items) {
+  if (!b.mine || (course && b.course_id !== course)) continue;
+  const k = `${b.course_id || ''}|${b.concept || '개념 없음'}`;
+  const c = m.get(k) || m.set(k, {course: b.course_title || '공통', concept: b.concept || '개념 없음', easy: 0, medium: 0, hard: 0, draft: 0}).get(k);
+  if (b.status === 'draft') c.draft++; else c[b.difficulty]++;
+ }
+ return [...m.values()];
+}
+async function bankTemplate(courses) {
+ const X = await xlsxLoad(), wb = X.utils.book_new(), c = courses[0]?.title || '';
+ const ws = X.utils.aoa_to_sheet([BANK_COLS,
+  [c, '변수와 자료형', '쉬움', '객관식', 'Python에서 정수형을 나타내는 자료형은?', 'str', 'int', 'list', 'dict', 2, 'int는 정수, str은 문자열입니다.', '', 10],
+  [c, '조건문', '보통', '주관식', 'if-elif-else 구조가 필요한 상황을 예로 들어 설명하세요.', '', '', '', '', '', '점수에 따라 학점을 나누는 경우처럼 여러 조건 중 하나만 실행할 때 씁니다.', '상황 예시 5점, 실행 흐름 설명 5점', 10]]);
+ ws['!cols'] = BANK_COLS.map(h => ({wch: h === '문제' ? 48 : /해설|채점/.test(h) ? 36 : /보기/.test(h) ? 14 : 10}));
+ X.utils.book_append_sheet(wb, ws, '문항');
+ const help = X.utils.aoa_to_sheet([['열', '작성 방법'], ['과정', '과정 목록 시트의 과정명을 그대로 입력 (비우면 공통 문항)'], ['개념', '필수, 80자 이하 (예: 변수와 자료형)'], ['난이도', '쉬움 · 보통 · 어려움'], ['유형', '객관식 · 주관식'], ['문제', '필수'], ['보기1~4', '객관식은 4개 모두 필수'], ['정답', '객관식: 1~4 번호 (또는 보기 내용 그대로)'], ['해설', '객관식 해설 / 주관식은 모범 답안'], ['채점기준', '주관식 채점 기준 (예: 개념 설명 5점, 예시 5점)'], ['배점', '1~100, 비우면 10점'], [''], ['참고', '첫 행(머리글)은 지우지 마세요. 한 번에 500행까지 올릴 수 있고, 오류가 있는 행은 건너뛰고 번호와 이유를 보여 줍니다.']]);
+ help['!cols'] = [{wch: 12}, {wch: 80}];
+ X.utils.book_append_sheet(wb, help, '작성 방법');
+ X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['과정명'], ...courses.map(c => [c.title])]), '과정 목록');
+ xlsxSave(X, wb, 'question-bank-template.xlsx');
+}
+async function bankExport(list) {
+ const X = await xlsxLoad(), wb = X.utils.book_new(), DK = {easy: '쉬움', medium: '보통', hard: '어려움'};
+ const rows = list.map(b => { const q = b.question, text = q.type === 'text', o = q.options || []; return [b.course_title || '', b.concept || '', DK[b.difficulty], text ? '주관식' : '객관식', q.prompt, ...(text ? ['', '', '', '', ''] : [o[0] || '', o[1] || '', o[2] || '', o[3] || '', (q.answer | 0) + 1]), text ? q.model_answer || '' : q.explanation || '', text ? q.rubric || '' : '', q.points, b.status === 'draft' ? '검수 대기' : b.status === 'reviewed' ? '검수 완료' : '사용 중', b.share === 'all' ? '전체 강사 공유' : '내 과정 전용', b.source === 'ai' ? 'AI' : b.source === 'exam' ? '시험' : b.via === 'excel' ? '엑셀' : '직접', b.stats?.rate ?? '', (b.stats?.flags || []).join(', ')]; });
+ const ws = X.utils.aoa_to_sheet([[...BANK_COLS, '상태', '공유', '출처', '정답률(%)', '품질'], ...rows]);
+ ws['!cols'] = [...BANK_COLS, 1, 2, 3, 4, 5].map(h => ({wch: h === '문제' ? 48 : 12}));
+ X.utils.book_append_sheet(wb, ws, '문항');
+ xlsxSave(X, wb, `question-bank-${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+function bankUpload() {
+ const input = document.createElement('input'); input.type = 'file'; input.accept = '.xlsx,.xls,.csv';
+ input.onchange = async () => {
+  const file = input.files[0]; if (!file) return;
+  try {
+   const X = await xlsxLoad(), wb = X.read(await file.arrayBuffer()), ws = wb.Sheets[wb.SheetNames[0]];
+   const rows = X.utils.sheet_to_json(ws, {defval: ''}).map((r, i) => ({...r, _row: i + 2})).filter(r => BANK_COLS.some(k => String(r[k] ?? '').trim()));
+   if (!rows.length) return toast('엑셀에 문항 행이 없습니다. 양식의 머리글을 확인하세요.');
+   const missing = ['개념', '난이도', '유형', '문제'].filter(k => !(k in rows[0]));
+   if (missing.length) return toast(`머리글이 양식과 다릅니다: ${missing.join(', ')} 열이 없습니다.`);
+   const check = await api('/instructor/bank/bulk', {method: 'POST', body: JSON.stringify({rows, dry_run: true})});
+   opDialog(`<h2>엑셀 업로드 확인</h2><p class="muted">${escape(file.name)}</p><div class="bk-up-sum"><div><small>전체 행</small><b>${check.total}</b></div><div class="ok"><small>등록 가능</small><b>${check.valid}</b></div><div class="${check.errors.length ? 'bad' : ''}"><small>오류</small><b>${check.errors.length}</b></div></div>${check.errors.length ? `<p class="muted">오류가 있는 행은 건너뜁니다. 엑셀에서 고친 뒤 다시 올리면 됩니다.</p><div class="table-wrap bk-up-err"><table><thead><tr><th>행</th><th>문제</th><th>오류</th></tr></thead><tbody>${check.errors.map(e => `<tr><td><b>${e.row}</b></td><td>${escape(e.prompt || '-')}</td><td>${e.errors.map(x => `<div>${escape(x)}</div>`).join('')}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted">모든 행이 올바릅니다.</p>'}<label>공유 범위</label><select name="share"><option value="course">내 과정 전용</option><option value="all">전체 강사 공유</option></select>`, `유효한 ${check.valid}개 등록`, async x => {
+    if (!check.valid) throw new Error('등록할 수 있는 행이 없습니다.');
+    const r = await api('/instructor/bank/bulk', {method: 'POST', body: JSON.stringify({rows, share: x.share})});
+    toast(`${r.added}개 문항을 등록했습니다.${r.errors.length ? ` (${r.errors.length}행 건너뜀)` : ''}`); renderBank();
+   });
+  } catch (e) { toast(e.message); }
+ };
+ input.click();
+}
 async function renderBank() {
  shell(); startLoading('문제 은행을 불러오고 있습니다…');
  try {
-  const [{items}, {courses}, {assessments}] = await Promise.all([api('/instructor/bank'), api('/instructor/courses'), api('/instructor/assessments')]);
+  const [{items, synced, target}, {courses}, {assessments}] = await Promise.all([api('/instructor/bank'), api('/instructor/courses'), api('/instructor/assessments')]);
   const f = bankFilter, s = f.q.toLowerCase();
-  const list = items.filter(b => (!f.diff || b.difficulty === f.diff) && (!f.type || (b.question.type || 'choice') === f.type) && (!f.course || b.course_id === f.course) && (!s || (b.concept + ' ' + b.question.prompt).toLowerCase().includes(s)));
-  const concepts = [...new Set(items.map(b => b.concept).filter(Boolean))];
-  $('#main').innerHTML = tIntro(`문제 은행 ${AI_MARK}`, '문항을 개념·난이도로 저장해 두고 시험을 만들 때 골라 씁니다. AI로 비슷한 새 문항을 만들 수 있습니다.', '<div class="quick-actions"><button class="secondary" id="bk-import">시험에서 가져오기</button><button class="primary" id="bk-new">+ 문항 추가</button></div>') +
-   opKpis([['저장된 문항', items.length], ['개념', concepts.length, concepts.slice(0, 3).join(', ')], ['AI 생성', items.filter(b => b.source === 'ai').length, '유사 문항'], ['시험에 사용', items.reduce((a, b) => a + b.used_count, 0), '누적 횟수']]) +
-   `<section class="panel m-panel"><div class="m-toolbar"><form class="m-search" id="bk-search"><input id="bk-q" value="${escape(f.q)}" placeholder="개념·문항 검색" list="bk-concepts"><datalist id="bk-concepts">${concepts.map(c => `<option value="${escape(c)}">`).join('')}</datalist></form><select id="bk-course"><option value="">모든 과정</option>${courses.map(c => `<option value="${c.id}" ${f.course === c.id ? 'selected' : ''}>${escape(c.title)}</option>`).join('')}</select><div class="m-seg">${[['', '전체'], ['easy', '쉬움'], ['medium', '보통'], ['hard', '어려움']].map(([k, l]) => `<button type="button" data-diff="${k}" class="${f.diff === k ? 'selected' : ''}">${l}</button>`).join('')}</div><div class="m-seg">${[['', '모든 유형'], ['choice', '객관식'], ['text', '주관식']].map(([k, l]) => `<button type="button" data-type="${k}" class="${f.type === k ? 'selected' : ''}">${l}</button>`).join('')}</div><span class="op-spacer"></span><span class="muted op-sub">${list.length}개</span></div>
-   <div class="bk-list">${list.slice(0, 60).map(b => { const q = b.question; return `<article class="bk-item"><div class="bk-head"><span class="op-scope">${escape(b.concept || '개념 없음')}</span><select class="bk-diff" data-id="${b.id}" aria-label="난이도">${Object.entries(tDiff).map(([k, [l]]) => `<option value="${k}" ${b.difficulty === k ? 'selected' : ''}>${l}</option>`).join('')}</select><span class="op-act ${q.type === 'text' ? 'op-a-member' : 'op-a-course'}">${q.type === 'text' ? '주관식' : '객관식'} · ${q.points}점</span>${b.source === 'ai' ? `<span class="op-act op-a-ai">${AI_MARK} 생성</span>` : b.source === 'exam' ? '<span class="op-act op-a-auth">시험에서</span>' : ''}<small class="muted">${escape(b.course_title || '')}${b.used_count ? ` · ${b.used_count}회 사용` : ''}</small><span class="op-spacer"></span><button type="button" class="m-btn bk-similar" data-id="${b.id}">${AI_MARK} 유사 문항</button><button type="button" class="op-del bk-del" data-id="${b.id}">삭제</button></div><div class="bk-prompt">${rich(q.prompt)}</div>${q.type === 'text' ? `<div class="bk-model"><small>모범 답안</small> ${escape(String(q.model_answer || '').slice(0, 160))}</div>` : `<ol class="bk-opts">${(q.options || []).map((o, i) => `<li class="${i === q.answer ? 'ok' : ''}">${rich(o)}</li>`).join('')}</ol>`}</article>`; }).join('') || '<div class="m-empty"><strong>조건에 맞는 문항이 없습니다</strong></div>'}</div></section>`;
-  $('#bk-search').onsubmit = e => { e.preventDefault(); bankFilter.q = $('#bk-q').value.trim(); renderBank(); };
-  $('#bk-q').onchange = () => { bankFilter.q = $('#bk-q').value.trim(); renderBank(); };
+  const st = {draft: b => b.status === 'draft', reviewed: b => b.status === 'reviewed', flag: b => bankLowFlags(b.stats?.flags).length, shared: b => b.share === 'all'};
+  const list = items.filter(b => (!f.diff || b.difficulty === f.diff) && (!f.type || (b.question.type || 'choice') === f.type) && (!f.course || b.course_id === f.course) && (!f.status || st[f.status](b)) && (!s || (b.concept + ' ' + b.question.prompt).toLowerCase().includes(s)));
+  const mine = items.filter(b => b.mine), concepts = [...new Set(items.map(b => b.concept).filter(Boolean))];
+  const cov = bankCoverage(items, f.course).map(c => ({...c, short: ['easy', 'medium', 'hard'].reduce((a, k) => a + Math.max(0, target - c[k]), 0)})).sort((a, b) => b.short - a.short || a.concept.localeCompare(b.concept));
+  const lacking = cov.filter(c => c.short > 0);
+  const cell = n => `<td class="num"><span class="cv-n ${n >= target ? 'cv-ok' : n ? 'cv-low' : 'cv-zero'}">${n}<small>/${target}</small></span></td>`;
+  const seg = (key, opts) => `<div class="m-seg">${opts.map(([k, l]) => `<button type="button" data-f="${key}" data-v="${k}" class="${f[key] === k ? 'selected' : ''}">${l}</button>`).join('')}</div>`;
+  $('#main').innerHTML = tIntro(`문제 은행 ${AI_MARK}`, `모든 과정의 시험 문항이 자동으로 쌓이고, 시험을 만들거나 고치면 함께 갱신됩니다. 개념·난이도마다 ${target}문항을 목표로 채워 보세요.`, '<div class="quick-actions"><button class="secondary" id="bk-tpl">엑셀 양식</button><button class="secondary" id="bk-up">엑셀 업로드</button><button class="secondary" id="bk-down">엑셀 다운로드</button><button class="primary" id="bk-new">+ 문항 추가</button></div>') +
+   (synced ? `<div class="bk-note">시험 문항 ${synced}개를 새로 가져왔습니다.</div>` : '') +
+   opKpis([['내 문항', mine.length, `${concepts.length}개 개념 · 검수 완료 ${mine.filter(st.reviewed).length}`], ['검수 대기', mine.filter(st.draft).length, 'AI 생성 초안 · 검수 후 사용', mine.filter(st.draft).length ? 'op-warn' : ''], ['품질 점검', mine.filter(st.flag).length, '변별도 낮음 · 너무 쉬움', mine.filter(st.flag).length ? 'op-bad' : ''], ['부족한 개념', lacking.length, `개념·난이도당 ${target}문항 미만`, lacking.length ? 'op-warn' : '']]) +
+   `<section class="panel m-panel"><div class="m-toolbar">${seg('view', [['list', '문항 목록'], ['coverage', '개념별 현황']])}<select id="bk-course"><option value="">모든 과정</option>${courses.map(c => `<option value="${c.id}" ${f.course === c.id ? 'selected' : ''}>${escape(c.title)}</option>`).join('')}</select>${f.view === 'list' ? `<form class="m-search" id="bk-search"><input id="bk-q" value="${escape(f.q)}" placeholder="개념·문항 검색" list="bk-concepts"><datalist id="bk-concepts">${concepts.map(c => `<option value="${escape(c)}">`).join('')}</datalist></form>` : ''}<span class="op-spacer"></span><span class="muted op-sub">${f.view === 'list' ? `${list.length}개` : `부족 ${lacking.length} / ${cov.length}개 개념`}</span></div>` +
+   (f.view === 'coverage' ? `<div class="table-wrap m-table"><table class="cv-table"><thead><tr><th>과정</th><th>개념</th><th class="num">쉬움</th><th class="num">보통</th><th class="num">어려움</th><th class="num">부족</th><th class="num">검수 대기</th><th></th></tr></thead><tbody>${cov.map(c => `<tr><td><small class="muted">${escape(c.course)}</small></td><td><b>${escape(c.concept)}</b></td>${cell(c.easy)}${cell(c.medium)}${cell(c.hard)}<td class="num">${c.short ? `<b class="op-bad">${c.short}</b>` : '<span class="op-good">충분</span>'}</td><td class="num">${c.draft || '-'}</td><td><button type="button" class="m-btn bk-fill" data-concept="${escape(c.concept)}">문항 보기</button></td></tr>`).join('') || '<tr><td colspan="8" class="muted">문항이 없습니다</td></tr>'}</tbody></table></div><p class="muted bk-cv-help">숫자는 검수 대기(AI 초안)를 뺀 문항 수입니다. 부족한 칸은 직접 추가하거나, 같은 개념 문항에서 ${AI_MARK} 유사 문항을 만들어 채우세요.</p>` :
+   `<div class="m-toolbar bk-filters">${seg('status', [['', '전체'], ['draft', '검수 대기'], ['reviewed', '검수 완료'], ['flag', '품질 점검'], ['shared', '공유됨']])}${seg('diff', [['', '모든 난이도'], ['easy', '쉬움'], ['medium', '보통'], ['hard', '어려움']])}${seg('type', [['', '모든 유형'], ['choice', '객관식'], ['text', '주관식']])}</div>
+   <div class="bk-list">${list.slice(0, 60).map(b => { const q = b.question, fl = b.stats?.flags || []; return `<article class="bk-item ${b.status === 'draft' ? 'bk-draft' : ''}"><div class="bk-head"><span class="op-scope">${escape(b.concept || '개념 없음')}</span>${b.mine ? `<select class="bk-diff" data-id="${b.id}" aria-label="난이도">${Object.entries(tDiff).map(([k, [l]]) => `<option value="${k}" ${b.difficulty === k ? 'selected' : ''}>${l}</option>`).join('')}</select>` : `<span class="op-level ${tDiff[b.difficulty][1]}">${tDiff[b.difficulty][0]}</span>`}<span class="op-act ${q.type === 'text' ? 'op-a-member' : 'op-a-course'}">${q.type === 'text' ? '주관식' : '객관식'} · ${q.points}점</span>${bankSource(b)}${bankStatus(b)}<small class="muted">${escape(b.course_title || '공통')}${b.used_count ? ` · ${b.used_count}회 사용` : ''}${b.mine ? '' : ` · ${escape(b.owner_name || '')} 강사 공유`}</small><span class="op-spacer"></span>${b.mine ? `<select class="bk-share" data-id="${b.id}" aria-label="공유 범위"><option value="course" ${b.share !== 'all' ? 'selected' : ''}>내 과정 전용</option><option value="all" ${b.share === 'all' ? 'selected' : ''}>전체 강사 공유</option></select><button type="button" class="m-btn bk-review ${b.status === 'reviewed' ? 'on' : ''}" data-id="${b.id}" data-undo="${b.status === 'reviewed'}">${b.status === 'draft' ? '검수 후 사용' : b.status === 'reviewed' ? '검수 취소' : '검수 완료'}</button><button type="button" class="m-btn bk-similar" data-id="${b.id}">${AI_MARK} 유사 문항</button><button type="button" class="op-del bk-del" data-id="${b.id}">삭제</button>` : ''}</div>${b.stats ? `<div class="bk-quality"><small class="muted">${escape(b.stats.exam)} · ${b.stats.n}명 응시 · 정답률 <b>${b.stats.rate ?? '-'}%</b> · 변별도 <b>${b.stats.discrimination ?? '-'}</b></small>${fl.map(x => `<span class="op-reason ${/검토|낮음/.test(x) ? 'op-r-missed' : /매력/.test(x) ? 'op-r-drop' : 'op-r-gap'}">${x}</span>`).join('')}</div>` : ''}<div class="bk-prompt">${rich(q.prompt)}</div>${q.type === 'text' ? `<div class="bk-model"><small>모범 답안</small> ${escape(String(q.model_answer || '').slice(0, 160))}</div>` : `<ol class="bk-opts">${(q.options || []).map((o, i) => `<li class="${i === q.answer ? 'ok' : ''}">${rich(o)}</li>`).join('')}</ol>`}</article>`; }).join('') || '<div class="m-empty"><strong>조건에 맞는 문항이 없습니다</strong></div>'}</div>${list.length > 60 ? `<p class="muted bk-cv-help">앞의 60개만 보여 줍니다. 검색이나 필터로 좁히거나 엑셀로 내려받으세요.</p>` : ''}`) + '</section>';
+  if ($('#bk-search')) { $('#bk-search').onsubmit = e => { e.preventDefault(); bankFilter.q = $('#bk-q').value.trim(); renderBank(); }; $('#bk-q').onchange = () => { bankFilter.q = $('#bk-q').value.trim(); renderBank(); }; }
   $('#bk-course').onchange = e => { bankFilter.course = e.target.value; renderBank(); };
-  $('#main').querySelectorAll('[data-diff]').forEach(b => b.onclick = () => { bankFilter.diff = b.dataset.diff; renderBank(); });
-  $('#main').querySelectorAll('[data-type]').forEach(b => b.onclick = () => { bankFilter.type = b.dataset.type; renderBank(); });
+  $('#main').querySelectorAll('[data-f]').forEach(b => b.onclick = () => { bankFilter[b.dataset.f] = b.dataset.v; renderBank(); });
+  $('#main').querySelectorAll('.bk-fill').forEach(b => b.onclick = () => { Object.assign(bankFilter, {view: 'list', q: b.dataset.concept, status: '', diff: ''}); renderBank(); });
   $('#main').querySelectorAll('.bk-diff').forEach(sel => sel.onchange = async () => { await api(`/instructor/bank/${sel.dataset.id}/update`, {method: 'POST', body: JSON.stringify({difficulty: sel.value})}); toast('난이도를 바꿨습니다.'); });
+  $('#main').querySelectorAll('.bk-share').forEach(sel => sel.onchange = async () => { await api(`/instructor/bank/${sel.dataset.id}/update`, {method: 'POST', body: JSON.stringify({share: sel.value})}); toast(sel.value === 'all' ? '모든 강사가 이 문항을 쓸 수 있습니다.' : '내 과정에서만 씁니다.'); });
+  $('#main').querySelectorAll('.bk-review').forEach(b => b.onclick = async () => { await api(`/instructor/bank/${b.dataset.id}/review`, {method: 'POST', body: JSON.stringify({undo: b.dataset.undo === 'true'})}); toast(b.dataset.undo === 'true' ? '검수 완료를 취소했습니다.' : '검수 완료로 표시했습니다. 연습 모드와 시험에 쓸 수 있습니다.'); renderBank(); });
   $('#main').querySelectorAll('.bk-del').forEach(b => b.onclick = async () => { if (!confirm('이 문항을 문제 은행에서 삭제할까요?')) return; await api(`/instructor/bank/${b.dataset.id}/delete`, {method: 'POST', body: '{}'}); renderBank(); });
-  $('#main').querySelectorAll('.bk-similar').forEach(b => b.onclick = async () => { b.disabled = true; b.textContent = '생성 중…'; try { await api(`/instructor/bank/${b.dataset.id}/similar`, {method: 'POST', body: '{}'}); toast('AI가 유사 문항을 만들어 문제 은행에 추가했습니다.'); renderBank(); } catch (e) { toast(e.message); b.disabled = false; b.innerHTML = `${AI_MARK} 유사 문항`; } });
-  $('#bk-import').onclick = () => opDialog(`<h2>시험에서 가져오기</h2><p class="muted">선택한 시험의 문항을 모두 문제 은행에 저장합니다. 이미 있는 문항은 건너뜁니다.</p><label>시험</label><select name="assessment_id">${assessments.map(a => `<option value="${a.id}">${escape(a.course_title)} · ${escape(a.title)} (${a.questions.length}문항)</option>`).join('')}</select>`, '가져오기', async data => { const r = await api('/instructor/bank/import', {method: 'POST', body: JSON.stringify(data)}); toast(`${r.added}개 문항을 저장했습니다.`); renderBank(); });
-  $('#bk-new').onclick = () => opDialog(`<h2>문항 추가</h2><div class="op-row"><div><label>유형</label><select name="type"><option value="choice">객관식</option><option value="text">주관식</option></select></div><div><label>배점</label><input name="points" type="number" min="1" max="100" value="10"></div></div><div class="op-row"><div><label>개념</label><input name="concept" maxlength="80" list="bk-concepts" required></div><div><label>난이도</label><select name="difficulty"><option value="easy">쉬움</option><option value="medium" selected>보통</option><option value="hard">어려움</option></select></div></div><label>과정</label><select name="course_id"><option value="">공통</option>${courses.map(c => `<option value="${c.id}">${escape(c.title)}</option>`).join('')}</select><label>문제</label><textarea name="prompt" rows="3" required></textarea><label>보기 (객관식, 한 줄에 하나 · 정답 앞에 *)</label><textarea name="options" rows="4" placeholder="*정답 보기&#10;오답 보기&#10;오답 보기&#10;오답 보기"></textarea><label>모범 답안 · 채점 기준 (주관식)</label><textarea name="model" rows="3"></textarea>`, '저장', async x => {
+  $('#main').querySelectorAll('.bk-similar').forEach(b => b.onclick = async () => { b.disabled = true; b.textContent = '생성 중…'; try { await api(`/instructor/bank/${b.dataset.id}/similar`, {method: 'POST', body: '{}'}); toast('AI가 유사 문항 초안을 만들었습니다. 검수 후 사용할 수 있습니다.'); bankFilter.status = 'draft'; renderBank(); } catch (e) { toast(e.message); b.disabled = false; b.innerHTML = `${AI_MARK} 유사 문항`; } });
+  $('#bk-tpl').onclick = () => bankTemplate(courses).catch(e => toast(e.message));
+  $('#bk-down').onclick = () => bankExport(f.view === 'list' ? list : items.filter(b => !f.course || b.course_id === f.course)).catch(e => toast(e.message));
+  $('#bk-up').onclick = bankUpload;
+  $('#bk-new').onclick = () => opDialog(`<h2>문항 추가</h2><div class="op-row"><div><label>유형</label><select name="type"><option value="choice">객관식</option><option value="text">주관식</option></select></div><div><label>배점</label><input name="points" type="number" min="1" max="100" value="10"></div></div><div class="op-row"><div><label>개념</label><input name="concept" maxlength="80" list="bk-concepts" required></div><div><label>난이도</label><select name="difficulty"><option value="easy">쉬움</option><option value="medium" selected>보통</option><option value="hard">어려움</option></select></div></div><div class="op-row"><div><label>과정</label><select name="course_id"><option value="">공통</option>${courses.map(c => `<option value="${c.id}" ${f.course === c.id ? 'selected' : ''}>${escape(c.title)}</option>`).join('')}</select></div><div><label>공유 범위</label><select name="share"><option value="course">내 과정 전용</option><option value="all">전체 강사 공유</option></select></div></div><label>문제</label><textarea name="prompt" rows="3" required></textarea><label>보기 (객관식, 한 줄에 하나 · 정답 앞에 *)</label><textarea name="options" rows="4" placeholder="*정답 보기&#10;오답 보기&#10;오답 보기&#10;오답 보기"></textarea><label>해설 · 모범 답안</label><textarea name="model" rows="2"></textarea><label>채점 기준 (주관식)</label><textarea name="rubric" rows="2"></textarea><p class="muted">여러 문항은 엑셀 양식으로 한 번에 올릴 수 있습니다. 시험 문항은 자동으로 들어옵니다(${assessments.length}개 시험).</p>`, '저장', async x => {
    const opts = x.options.split(/\n/).map(s => s.trim()).filter(Boolean).slice(0, 4), ans = Math.max(0, opts.findIndex(o => o.startsWith('*')));
-   const question = x.type === 'text' ? {type: 'text', prompt: x.prompt, points: Number(x.points), model_answer: x.model, rubric: x.model} : {type: 'choice', prompt: x.prompt, points: Number(x.points), options: opts.map(o => o.replace(/^\*/, '')).concat(['', '', '', '']).slice(0, 4), answer: ans};
-   await api('/instructor/bank', {method: 'POST', body: JSON.stringify({question, concept: x.concept, difficulty: x.difficulty, course_id: x.course_id || null})}); toast('문항을 저장했습니다.'); renderBank();
+   const question = x.type === 'text' ? {type: 'text', prompt: x.prompt, points: Number(x.points), model_answer: x.model, rubric: x.rubric || x.model, explanation: x.model} : {type: 'choice', prompt: x.prompt, points: Number(x.points), options: opts.map(o => o.replace(/^\*/, '')).concat(['', '', '', '']).slice(0, 4), answer: ans, explanation: x.model};
+   await api('/instructor/bank', {method: 'POST', body: JSON.stringify({question, concept: x.concept, difficulty: x.difficulty, course_id: x.course_id || null, share: x.share})}); toast('문항을 저장했습니다.'); renderBank();
   });
  } catch (e) { opFail(e); }
 }
-// Used by the exam editor: pick questions from the bank into the current draft.
+// Used by the exam editor: pick questions from the bank into the current draft (AI drafts excluded until reviewed).
 async function pickFromBank(onPick) {
- const {items} = await api('/instructor/bank');
- opDialog(`<h2>문제 은행에서 추가</h2><input class="bk-pick-q" placeholder="개념·문항 검색"><div class="bk-pick">${items.map(b => `<label class="bk-pick-row" data-text="${escape((b.concept + ' ' + b.question.prompt).toLowerCase())}"><input type="checkbox" name="pick" value="${b.id}"><span class="op-scope">${escape(b.concept || '-')}</span><span class="op-level ${tDiff[b.difficulty][1]}">${tDiff[b.difficulty][0]}</span><span class="bk-pick-text">${escape(String(b.question.prompt).slice(0, 80))}</span></label>`).join('')}</div>`, '선택한 문항 추가', async () => {
+ const items = (await api('/instructor/bank')).items.filter(b => b.status !== 'draft');
+ opDialog(`<h2>문제 은행에서 추가</h2><input class="bk-pick-q" placeholder="개념·문항 검색"><div class="bk-pick">${items.map(b => `<label class="bk-pick-row" data-text="${escape((b.concept + ' ' + b.question.prompt).toLowerCase())}"><input type="checkbox" name="pick" value="${b.id}"><span class="op-scope">${escape(b.concept || '-')}</span><span class="op-level ${tDiff[b.difficulty][1]}">${tDiff[b.difficulty][0]}</span>${b.status === 'reviewed' ? '<span class="op-act op-a-grade">✓</span>' : ''}${b.mine ? '' : '<span class="op-act op-a-member">공유</span>'}<span class="bk-pick-text">${escape(String(b.question.prompt).slice(0, 80))}</span></label>`).join('')}</div>`, '선택한 문항 추가', async () => {
   const ids = [...document.querySelectorAll('.bk-pick input:checked')].map(i => i.value), picked = items.filter(b => ids.includes(b.id));
   onPick(picked.map(b => structuredClone({...b.question, tag: b.question.tag || b.concept})));
   for (const b of picked) api(`/instructor/bank/${b.id}/used`, {method: 'POST', body: '{}'}).catch(() => {});

@@ -854,3 +854,17 @@ b.op-good{color:#23845a!important}b.op-warn{color:#a77400!important}b.op-bad{col
 .ct-bar{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:10px}
 .ct-en-note{font-size:12px;text-align:right;margin:-4px 0 10px}
 .ct-dlg-tools{display:flex;align-items:center;gap:8px}
+/* 문제 은행: 품질·검수·현황·엑셀 */
+.bk-draft{background:#fffbea}
+.bk-quality{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0 2px}.bk-quality small{font-size:12px}
+.bk-head select.bk-share,.bk-head select.bk-diff{width:auto;padding:3px 8px;font-size:12px}
+.bk-review.on{background:#e7f5ee;color:#23845a;border-color:#bfe3d0}
+.bk-filters{border-top:1px solid var(--line)}
+.bk-note{margin:0 0 12px;padding:8px 12px;border-radius:8px;background:var(--yellow-soft);color:#8a6100;font-size:13px}
+.cv-table td,.cv-table th{padding:8px 12px}
+.cv-n{display:inline-block;min-width:44px;padding:2px 8px;border-radius:6px;font-weight:700;text-align:center}.cv-n small{font-weight:400;opacity:.7}
+.cv-ok{background:#e7f5ee;color:#23845a}.cv-low{background:var(--orange-soft);color:var(--orange-dark)}.cv-zero{background:#fde8eb;color:#b4233c}
+.bk-cv-help{padding:10px 16px;font-size:13px}
+.bk-up-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}.bk-up-sum div{border:1px solid var(--line);border-radius:8px;padding:8px 12px}.bk-up-sum small{display:block;color:var(--muted);font-size:12px}.bk-up-sum b{font-size:20px}.bk-up-sum .ok b{color:#23845a}.bk-up-sum .bad b{color:#b4233c}
+.bk-up-err{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:8px}.bk-up-err td,.bk-up-err th{padding:6px 10px;font-size:13px;vertical-align:top}.bk-up-err td div{color:#b4233c}
+.bk-up-err table{table-layout:fixed;width:100%}.bk-up-err th:first-child{width:44px}.bk-up-err td{white-space:normal;word-break:keep-all;overflow-wrap:anywhere}

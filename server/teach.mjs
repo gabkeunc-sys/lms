@@ -27,6 +27,106 @@ async function ownAssessment(query, session, id) {
 }
 const scope = session => session.role === 'admin' ? ['1=1', []] : ['c.owner_id=$1', [session.id]];
 
+// ---------- 문제 은행 helpers ----------
+export const COVER_TARGET = 5; // goal: questions per concept per difficulty
+const DIFF_KO = {'쉬움': 'easy', '보통': 'medium', '어려움': 'hard', easy: 'easy', medium: 'medium', hard: 'hard'};
+const TYPE_KO = {'객관식': 'choice', '주관식': 'text', choice: 'choice', text: 'text'};
+const cleanQ = (q, concept) => ({type: q.type || 'choice', prompt: String(q.prompt).slice(0, 8000), points: Math.min(100, Math.max(1, q.points | 0 || 10)), tag: concept, explanation: String(q.explanation || '').slice(0, 4000), ...(q.type === 'text' ? {model_answer: String(q.model_answer || ''), rubric: String(q.rubric || '')} : {options: (q.options || []).slice(0, 4).map(String), answer: q.answer | 0})});
+const parseResult = r => ({...r, answers: j(r.answers), grading: j(r.grading), questions: j(r.questions)});
+
+// Per-question difficulty, discrimination and flags for one exam (rows = its results).
+function analyze(a, rows) {
+ const n = rows.length, sorted = [...rows].sort((x, y) => y.score / y.total - x.score / x.total), k = Math.max(1, Math.round(n * 0.27));
+ const upper = sorted.slice(0, k), lower = sorted.slice(-k);
+ const questions = a.questions.map((q, i) => {
+  const got = r => { const qq = r.questions[i] || q; if (isText(qq)) { const g = r.grading[i]; return g?.status === 'confirmed' ? g.score / qq.points : null; } return r.answers[i] === qq.answer ? 1 : 0; };
+  const vals = rows.map(got).filter(v => v != null);
+  const rate = vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+  const avg = list => { const v = list.map(got).filter(x => x != null); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
+  const hi = avg(upper), lo = avg(lower), disc = hi != null && lo != null && n >= 4 ? hi - lo : null;
+  const dist = isText(q) ? null : (q.options || []).map((o, oi) => ({text: o, count: rows.filter(r => r.answers[i] === oi).length, correct: oi === q.answer}));
+  const blank = isText(q) ? rows.filter(r => !String(r.answers[i] || '').trim()).length : rows.filter(r => r.answers[i] == null).length;
+  const wrong = dist ? dist.filter(d => !d.correct).sort((x, y) => y.count - x.count)[0] : null;
+  const flags = [];
+  if (rate != null && rate < 0.4) flags.push('어려움');
+  if (rate != null && rate > 0.9) flags.push('너무 쉬움');
+  if (disc != null && disc < 0.2) flags.push('변별도 낮음');
+  if (disc != null && disc < 0) flags.push('문항 검토 필요');
+  if (wrong && n && wrong.count / n >= 0.3) flags.push('매력적인 오답');
+  return {index: i, type: q.type || 'choice', tag: q.tag || '', prompt: q.prompt, points: q.points, rate: r1(rate == null ? null : rate * 100), discrimination: r1(disc), distribution: dist, blank, graded: vals.length, top_wrong: wrong && wrong.count ? wrong : null, flags};
+ });
+ return {n, average: n ? r1(rows.reduce((s, r) => s + r.score * 100 / r.total, 0) / n) : null, questions};
+}
+async function analyzeAssessment(query, a) {
+ const rows = (await query('SELECT r.score,r.total,r.answers,r.grading,r.grading_status,r.questions FROM assessment_results r WHERE r.assessment_id=$1', [a.id])).rows.map(parseResult);
+ return analyze(a, rows);
+}
+const guessDiff = rate => rate == null ? 'medium' : rate >= 80 ? 'easy' : rate < 50 ? 'hard' : 'medium';
+
+// Copy one exam's questions into the bank (owner = course owner) and keep them in sync.
+// Linked by (source_assessment_id, source_index); an unlinked item with the same prompt in the course is adopted.
+async function syncAssessment(query, a, bankRows, resultRows) {
+ bankRows ||= (await query('SELECT id,course_id,question,source,source_assessment_id,source_index,concept FROM question_bank WHERE course_id=$1 AND deleted_at IS NULL', [a.course_id])).rows;
+ const linked = new Map(bankRows.filter(b => b.source_assessment_id === a.id).map(b => [b.source_index, b]));
+ const byPrompt = new Map(bankRows.map(b => [j(b.question).prompt, b]));
+ let added = 0, stats = null;
+ for (const [i, q] of a.questions.entries()) {
+  if (!q || !q.prompt) continue;
+  const concept = String(q.tag || '').slice(0, 80), json = JSON.stringify(q), cur = linked.get(i);
+  if (cur) { if (cur.source === 'exam' && (cur.question !== json || cur.concept !== concept)) await query('UPDATE question_bank SET question=$1,concept=$2 WHERE id=$3', [json, concept, cur.id]); continue; }
+  const same = byPrompt.get(q.prompt);
+  if (same) { if (!same.source_assessment_id) { await query('UPDATE question_bank SET source_assessment_id=$1,source_index=$2 WHERE id=$3', [a.id, i, same.id]); same.source_assessment_id = a.id; } continue; }
+  if (!stats) stats = resultRows ? analyze(a, resultRows) : await analyzeAssessment(query, a);
+  const id = randomUUID();
+  await query('INSERT INTO question_bank(id,owner_id,course_id,concept,difficulty,question,source,source_assessment_id,source_index) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)', [id, a.owner_id, a.course_id, concept, guessDiff(stats.questions[i]?.rate), json, 'exam', a.id, i]);
+  const row = {id, course_id: a.course_id, question: json, source: 'exam', source_assessment_id: a.id, source_index: i, concept};
+  bankRows.push(row); byPrompt.set(q.prompt, row); added++;
+ }
+ // Questions removed from a not-yet-taken exam: drop their synced copies.
+ for (const [i, b] of linked) if (i >= a.questions.length && b.source === 'exam') await query(`UPDATE question_bank SET deleted_at=${NOWSQL} WHERE id=$1`, [b.id]);
+ return added;
+}
+async function scopedExams(query, session) {
+ const [where, params] = scope(session);
+ return (await query(`SELECT a.id,a.course_id,a.title,a.questions,c.owner_id FROM assessments a JOIN courses c ON c.id=a.course_id WHERE c.deleted_at IS NULL AND ${where}`, params)).rows.map(a => ({...a, questions: j(a.questions) || []}));
+}
+async function scopedResults(query, session) {
+ const [where, params] = scope(session);
+ const rows = (await query(`SELECT r.assessment_id,r.score,r.total,r.answers,r.grading,r.grading_status,r.questions FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id JOIN courses c ON c.id=a.course_id WHERE c.deleted_at IS NULL AND ${where}`, params)).rows.map(parseResult);
+ return rows.reduce((m, r) => { (m.get(r.assessment_id) || m.set(r.assessment_id, []).get(r.assessment_id)).push(r); return m; }, new Map());
+}
+// Sync every exam in the caller's scope (all courses, including ones whose bank is still empty).
+export async function syncBank(query, session) {
+ const exams = await scopedExams(query, session);
+ if (!exams.length) return 0;
+ const [where, params] = scope(session);
+ const bank = (await query(`SELECT b.id,b.course_id,b.question,b.source,b.source_assessment_id,b.source_index,b.concept FROM question_bank b JOIN courses c ON c.id=b.course_id WHERE b.deleted_at IS NULL AND ${where}`, params)).rows;
+ const byCourse = bank.reduce((m, b) => { (m.get(b.course_id) || m.set(b.course_id, []).get(b.course_id)).push(b); return m; }, new Map());
+ let results = null, added = 0;
+ for (const a of exams) {
+  const rows = byCourse.get(a.course_id) || byCourse.set(a.course_id, []).get(a.course_id);
+  const known = new Set(rows.map(b => j(b.question).prompt)), linked = new Set(rows.filter(b => b.source_assessment_id === a.id).map(b => b.source_index));
+  const needs = a.questions.some((q, i) => q?.prompt && (!known.has(q.prompt) || !linked.has(i))) || rows.some(b => b.source_assessment_id === a.id && b.source === 'exam' && (b.source_index >= a.questions.length || b.question !== JSON.stringify(a.questions[b.source_index])));
+  if (!needs) continue;
+  results ||= await scopedResults(query, session);
+  added += await syncAssessment(query, a, rows, results.get(a.id) || []);
+ }
+ return added;
+}
+export async function syncExamToBank(query, assessmentId) {
+ const a = (await query('SELECT a.id,a.course_id,a.questions,c.owner_id FROM assessments a JOIN courses c ON c.id=a.course_id WHERE a.id=$1', [assessmentId])).rows[0];
+ if (a) await syncAssessment(query, {...a, questions: j(a.questions) || []});
+}
+// Item-analysis stats for bank items: key "aid#index" and "course|prompt" -> {rate, discrimination, flags, n, exam}.
+async function bankStats(query, session) {
+ const exams = await scopedExams(query, session), results = await scopedResults(query, session), out = new Map();
+ for (const a of exams) {
+  const rows = results.get(a.id); if (!rows?.length) continue;
+  analyze(a, rows).questions.forEach((q, i) => { const s = {rate: q.rate, discrimination: q.discrimination, flags: q.flags, n: rows.length, exam: a.title}; out.set(`${a.id}#${i}`, s); const k = `${a.course_id}|${q.prompt}`; if (!out.has(k)) out.set(k, s); });
+ }
+ return out;
+}
+
 export async function teachAPI({path, method, body, session, query, response, fail, url}) {
  if (!session) return fail('로그인이 필요합니다.', 401);
  if (!['instructor', 'admin'].includes(session.role)) return fail('강사만 접근할 수 있습니다.', 403);
@@ -97,61 +197,81 @@ export async function teachAPI({path, method, body, session, query, response, fa
  if ((m = path.match(/^\/instructor\/analysis\/([a-f0-9-]{36})$/)) && method === 'GET') {
   const a = await ownAssessment(query, session, m[1]);
   if (!a) return fail('시험을 찾을 수 없습니다.', 404);
-  const rows = (await query('SELECT r.score,r.total,r.answers,r.grading,r.grading_status,r.questions FROM assessment_results r WHERE r.assessment_id=$1', [a.id])).rows.map(r => ({...r, answers: j(r.answers), grading: j(r.grading), questions: j(r.questions)}));
-  const n = rows.length, sorted = [...rows].sort((x, y) => y.score / y.total - x.score / x.total), k = Math.max(1, Math.round(n * 0.27));
-  const upper = sorted.slice(0, k), lower = sorted.slice(-k);
-  const qs = a.questions.map((q, i) => {
-   const got = r => { const qq = r.questions[i] || q; if (isText(qq)) { const g = r.grading[i]; return g?.status === 'confirmed' ? g.score / qq.points : null; } return r.answers[i] === qq.answer ? 1 : 0; };
-   const vals = rows.map(got).filter(v => v != null);
-   const rate = vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
-   const avg = list => { const v = list.map(got).filter(x => x != null); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
-   const hi = avg(upper), lo = avg(lower), disc = hi != null && lo != null && n >= 4 ? hi - lo : null;
-   const dist = isText(q) ? null : q.options.map((o, oi) => ({text: o, count: rows.filter(r => r.answers[i] === oi).length, correct: oi === q.answer}));
-   const blank = isText(q) ? rows.filter(r => !String(r.answers[i] || '').trim()).length : rows.filter(r => r.answers[i] == null).length;
-   const wrong = dist ? dist.filter(d => !d.correct).sort((x, y) => y.count - x.count)[0] : null;
-   const flags = [];
-   if (rate != null && rate < 0.4) flags.push('어려움');
-   if (rate != null && rate > 0.9) flags.push('너무 쉬움');
-   if (disc != null && disc < 0.2) flags.push('변별도 낮음');
-   if (disc != null && disc < 0) flags.push('문항 검토 필요');
-   if (wrong && n && wrong.count / n >= 0.3) flags.push('매력적인 오답');
-   return {index: i, type: q.type || 'choice', tag: q.tag || '', prompt: q.prompt, points: q.points, rate: r1(rate == null ? null : rate * 100), discrimination: r1(disc), distribution: dist, blank, graded: vals.length, top_wrong: wrong && wrong.count ? wrong : null, flags};
-  });
+  const {n, average, questions: qs} = await analyzeAssessment(query, a);
   const concepts = [...qs.reduce((m, q) => { if (q.rate == null) return m; const t = q.tag || '기타'; const c = m.get(t) || {tag: t, sum: 0, n: 0}; c.sum += q.rate; c.n++; m.set(t, c); return m; }, new Map()).values()].map(c => ({tag: c.tag, rate: r1(c.sum / c.n)})).sort((x, y) => x.rate - y.rate);
-  return response({assessment: {id: a.id, title: a.title, week: a.week, course_title: a.course_title}, respondents: n, average: n ? r1(rows.reduce((s, r) => s + r.score * 100 / r.total, 0) / n) : null, questions: qs, concepts});
+  return response({assessment: {id: a.id, title: a.title, week: a.week, course_title: a.course_title}, respondents: n, average, questions: qs, concepts});
  }
 
  // ---------- 문제 은행 ----------
  if (path === '/instructor/bank' && method === 'GET') {
-  const own = session.role === 'admin' ? '1=1' : 'b.owner_id=$1';
-  const rows = (await query(`SELECT b.id,b.course_id,b.concept,b.difficulty,b.question,b.source,b.used_count,b.created_at,c.title AS course_title FROM question_bank b LEFT JOIN courses c ON c.id=b.course_id WHERE b.deleted_at IS NULL AND ${own} ORDER BY b.created_at DESC`, session.role === 'admin' ? [] : [session.id])).rows;
-  return response({items: rows.map(r => ({...r, question: j(r.question)}))});
+  const synced = await syncBank(query, session);
+  const admin = session.role === 'admin';
+  const rows = (await query(`SELECT b.id,b.owner_id,b.course_id,b.concept,b.difficulty,b.question,b.source,b.used_count,b.created_at,b.status,b.share,b.via,b.reviewed_at,b.source_assessment_id,b.source_index,c.title AS course_title,u.name AS owner_name FROM question_bank b LEFT JOIN courses c ON c.id=b.course_id LEFT JOIN app_users u ON u.id=b.owner_id WHERE b.deleted_at IS NULL AND ${admin ? '1=1' : "(b.owner_id=$1 OR (b.share='all' AND b.status<>'draft'))"} ORDER BY b.created_at DESC`, admin ? [] : [session.id])).rows;
+  // Item-analysis flags, joined by exam link or (course, prompt).
+  const stats = await bankStats(query, session);
+  const items = rows.map(r => { const q = j(r.question); const st = stats.get(`${r.source_assessment_id}#${r.source_index}`) || stats.get(`${r.course_id}|${q.prompt}`) || null; return {...r, question: q, mine: r.owner_id === session.id || admin, stats: st}; });
+  return response({items, synced, target: COVER_TARGET});
  }
  if (path === '/instructor/bank' && method === 'POST') {
   const q = body.question;
   if (!q || typeof q.prompt !== 'string' || !q.prompt.trim() || !['choice', 'text'].includes(q.type || 'choice')) return fail('문항 내용을 확인하세요.');
   if (body.course_id && !(await ownCourse(query, session, body.course_id))) return fail('과정을 확인하세요.');
   const diff = DIFF.includes(body.difficulty) ? body.difficulty : 'medium', concept = String(body.concept || q.tag || '').slice(0, 80);
-  const clean = {type: q.type || 'choice', prompt: q.prompt.slice(0, 8000), points: Math.min(100, Math.max(1, q.points | 0 || 10)), tag: concept, explanation: String(q.explanation || '').slice(0, 4000), ...(q.type === 'text' ? {model_answer: String(q.model_answer || ''), rubric: String(q.rubric || '')} : {options: (q.options || []).slice(0, 4).map(String), answer: q.answer | 0})};
   const id = randomUUID();
-  await query('INSERT INTO question_bank(id,owner_id,course_id,concept,difficulty,question,source) VALUES($1,$2,$3,$4,$5,$6,$7)', [id, session.id, body.course_id || null, concept, diff, JSON.stringify(clean), ['exam', 'ai'].includes(body.source) ? body.source : 'manual']);
+  await query('INSERT INTO question_bank(id,owner_id,course_id,concept,difficulty,question,source,share) VALUES($1,$2,$3,$4,$5,$6,$7,$8)', [id, session.id, body.course_id || null, concept, diff, JSON.stringify(cleanQ(q, concept)), ['exam', 'ai'].includes(body.source) ? body.source : 'manual', body.share === 'all' ? 'all' : 'course']);
   return response({id});
  }
  if (path === '/instructor/bank/import' && method === 'POST') {
   const a = await ownAssessment(query, session, body.assessment_id);
   if (!a) return fail('시험을 찾을 수 없습니다.', 404);
-  const have = new Set((await query('SELECT question FROM question_bank WHERE owner_id=$1 AND deleted_at IS NULL', [session.id])).rows.map(r => j(r.question).prompt));
-  let added = 0;
-  for (const q of a.questions) { if (have.has(q.prompt)) continue; await query('INSERT INTO question_bank(id,owner_id,course_id,concept,difficulty,question,source) VALUES($1,$2,$3,$4,$5,$6,$7)', [randomUUID(), session.id, a.course_id, String(q.tag || '').slice(0, 80), 'medium', JSON.stringify(q), 'exam']); added++; }
-  return response({added});
+  return response({added: await syncAssessment(query, a)});
  }
- if ((m = path.match(/^\/instructor\/bank\/([a-f0-9-]{36})\/(delete|similar|update|used)$/)) && method === 'POST') {
+ // Excel bulk upload: rows parsed in the browser; validate every row, insert the valid ones unless dry_run.
+ if (path === '/instructor/bank/bulk' && method === 'POST') {
+  if (!Array.isArray(body.rows) || !body.rows.length) return fail('업로드할 행이 없습니다.');
+  if (body.rows.length > 500) return fail('한 번에 500행까지 올릴 수 있습니다.');
+  const [where, params] = scope(session);
+  const courses = (await query(`SELECT c.id,c.title FROM courses c WHERE c.deleted_at IS NULL AND ${where}`, params)).rows;
+  const byTitle = new Map(courses.map(c => [c.title.trim(), c.id]));
+  const have = new Set((await query('SELECT course_id,question FROM question_bank WHERE owner_id=$1 AND deleted_at IS NULL', [session.id])).rows.map(r => `${r.course_id}|${j(r.question).prompt}`));
+  const errors = [], ok = [];
+  body.rows.forEach((raw, i) => {
+   const row = Number(raw._row) || i + 2, v = k => String(raw?.[k] ?? '').trim(), errs = [];
+   const course = v('과정'), courseId = course ? byTitle.get(course) : null;
+   if (course && !courseId) errs.push(`과정 "${course.slice(0, 30)}"을(를) 찾을 수 없습니다`);
+   const concept = v('개념'); if (!concept) errs.push('개념이 비어 있습니다'); else if (concept.length > 80) errs.push('개념은 80자 이하');
+   const diff = DIFF_KO[v('난이도')] || DIFF_KO[v('난이도').toLowerCase()]; if (!diff) errs.push('난이도는 쉬움·보통·어려움 중 하나');
+   const type = TYPE_KO[v('유형')] || TYPE_KO[v('유형').toLowerCase()]; if (!type) errs.push('유형은 객관식·주관식 중 하나');
+   const prompt = v('문제'); if (!prompt) errs.push('문제가 비어 있습니다');
+   const points = v('배점') ? Number(v('배점')) : 10; if (!Number.isInteger(points) || points < 1 || points > 100) errs.push('배점은 1~100 정수');
+   let q = null;
+   if (type === 'choice') {
+    const options = [1, 2, 3, 4].map(k => v('보기' + k));
+    if (options.some(o => !o)) errs.push('객관식은 보기1~4를 모두 채워야 합니다');
+    const a = v('정답'), num = Number(a), answer = Number.isInteger(num) && num >= 1 && num <= 4 ? num - 1 : options.indexOf(a);
+    if (answer < 0) errs.push('정답은 1~4 번호(또는 보기 내용)');
+    q = {type, prompt, points, options, answer, explanation: v('해설')};
+   } else if (type === 'text') {
+    if (!v('채점기준') && !v('해설')) errs.push('주관식은 해설(모범 답안) 또는 채점기준이 필요합니다');
+    q = {type, prompt, points, model_answer: v('해설'), rubric: v('채점기준') || v('해설'), explanation: v('해설')};
+   }
+   if (!errs.length && have.has(`${courseId || null}|${prompt}`)) errs.push('이미 같은 문제가 은행에 있습니다');
+   if (errs.length) errors.push({row, prompt: prompt.slice(0, 40), errors: errs});
+   else { have.add(`${courseId || null}|${prompt}`); ok.push({courseId, concept, diff, q: cleanQ(q, concept)}); }
+  });
+  if (!body.dry_run) for (const r of ok) await query('INSERT INTO question_bank(id,owner_id,course_id,concept,difficulty,question,source,via,share) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)', [randomUUID(), session.id, r.courseId, r.concept, r.diff, JSON.stringify(r.q), 'manual', 'excel', body.share === 'all' ? 'all' : 'course']);
+  return response({total: body.rows.length, valid: ok.length, added: body.dry_run ? 0 : ok.length, errors});
+ }
+ if ((m = path.match(/^\/instructor\/bank\/([a-f0-9-]{36})\/(delete|similar|update|used|review)$/)) && method === 'POST') {
   const b = (await query('SELECT * FROM question_bank WHERE id=$1 AND deleted_at IS NULL', [m[1]])).rows[0];
-  if (!b || (b.owner_id !== session.id && session.role !== 'admin')) return fail('문항을 찾을 수 없습니다.', 404);
+  if (!b) return fail('문항을 찾을 수 없습니다.', 404);
+  const mine = b.owner_id === session.id || session.role === 'admin';
+  if (m[2] === 'used' && (mine || b.share === 'all')) { await query('UPDATE question_bank SET used_count=used_count+1 WHERE id=$1', [b.id]); return response({ok: true}); }
+  if (!mine) return fail('문항을 찾을 수 없습니다.', 404);
   if (m[2] === 'delete') { await query(`UPDATE question_bank SET deleted_at=${NOWSQL} WHERE id=$1`, [b.id]); return response({ok: true}); }
-  if (m[2] === 'used') { await query('UPDATE question_bank SET used_count=used_count+1 WHERE id=$1', [b.id]); return response({ok: true}); }
+  if (m[2] === 'review') { const undo = body.undo === true; await query(`UPDATE question_bank SET status=$1,reviewed_at=${undo ? 'NULL' : NOWSQL} WHERE id=$2`, [undo ? 'active' : 'reviewed', b.id]); return response({ok: true}); }
   if (m[2] === 'update') {
-   await query('UPDATE question_bank SET concept=$1,difficulty=$2 WHERE id=$3', [String(body.concept ?? b.concept).slice(0, 80), DIFF.includes(body.difficulty) ? body.difficulty : b.difficulty, b.id]);
+   await query('UPDATE question_bank SET concept=$1,difficulty=$2,share=$3 WHERE id=$4', [String(body.concept ?? b.concept).slice(0, 80), DIFF.includes(body.difficulty) ? body.difficulty : b.difficulty, ['course', 'all'].includes(body.share) ? body.share : b.share, b.id]);
    return response({ok: true});
   }
   const setting = (await query('SELECT * FROM ai_settings WHERE id=1 AND enabled=true')).rows[0];
@@ -160,7 +280,8 @@ export async function teachAPI({path, method, body, session, query, response, fa
   let out;
   try { out = await meteredAI(query, setting, 'question', session.id, () => generateQuestion(setting, {question: j(b.question), concept: b.concept, difficulty: diff})); } catch (e) { return fail(e.message, e.status || 502); }
   const id = randomUUID();
-  await query('INSERT INTO question_bank(id,owner_id,course_id,concept,difficulty,question,source) VALUES($1,$2,$3,$4,$5,$6,$7)', [id, session.id, b.course_id, b.concept, diff, JSON.stringify(out.question), 'ai']);
+  // AI questions start as drafts: they are not used in practice or exams until an instructor reviews them.
+  await query('INSERT INTO question_bank(id,owner_id,course_id,concept,difficulty,question,source,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8)', [id, session.id, b.course_id, b.concept, diff, JSON.stringify(out.question), 'ai', 'draft']);
   return response({id, question: out.question});
  }
 

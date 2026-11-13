@@ -1,6 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {NOW,toTimestamp} from './db.mjs';
 import {logActivity} from './ops.mjs';
+import {syncExamToBank} from './teach.mjs';
 const uuid=s=>typeof s==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(s);
 const text=(s,max)=>typeof s==='string'&&s.trim().length>0&&s.length<=max;
 export async function instructorAPI({path,method,body,session,query,response,fail}){
@@ -72,6 +73,7 @@ export async function instructorAPI({path,method,body,session,query,response,fai
   if(body.id&&(await query('SELECT id FROM assessment_results WHERE assessment_id=$1 LIMIT 1',[body.id])).rows.length)return fail('응시 결과가 있는 시험은 수정할 수 없습니다. 새 시험을 작성하세요.',409);
   const vals=[body.course_id,body.title.trim(),body.kind,body.week,body.duration,toTimestamp(body.opens_at),toTimestamp(body.closes_at),JSON.stringify(questions)];
   const r=body.id?await query('UPDATE assessments SET course_id=$1,title=$2,kind=$3,week=$4,duration=$5,opens_at=$6,closes_at=$7,questions=$8 WHERE id=$9 RETURNING *',[...vals,body.id]):await query('INSERT INTO assessments(course_id,title,kind,week,duration,opens_at,closes_at,questions,id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',[...vals,randomUUID()]);
+  try{await syncExamToBank(query,r.rows[0].id);}catch{} // keep the question bank in step with exams
   return response({assessment:r.rows[0]});
  }
  return fail('요청한 기능을 찾을 수 없습니다.',404);
