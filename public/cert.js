@@ -1,14 +1,15 @@
 // Completion certificate renderer: draws the uploaded template (navy design) and overlays
 // name, course, date, grade, certificate number and a QR code to /verify/<no>. Exports PNG and A4 PDF.
-const CERT_TEMPLATE = '/images/certificate-template.jpg';
+const CERT_TEMPLATE = '/images/certificate-template.jpg', CERT_SIGNATURE = '/images/signature.png';
 const CERT_W = 1055, CERT_H = 1491, CERT_SCALE = 2; // template pixels; drawn at 2x for print
 const CERT_INK = '#13305f';
 let certAssets;
 function certLoad() {
  return certAssets ||= Promise.all([
   new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = no; i.src = CERT_TEMPLATE; }),
+  new Promise(ok => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = CERT_SIGNATURE; }),
   (async () => { try { const f = new FontFace('CertSerifKR', 'url(/vendor/fonts/cert-serif-kr.woff2)', {weight: '700'}); await f.load(); document.fonts.add(f); } catch {} })(),
- ]).then(([img]) => img);
+ ]).then(([img, sig]) => ({img, sig}));
 }
 const certVerifyUrl = no => `${location.origin}/verify/${encodeURIComponent(no)}`;
 const certDate = d => String(d || '').slice(0, 10).replace(/-/g, '. ') + '.';
@@ -16,7 +17,7 @@ const certFont = (px, w = 700) => `${w} ${px}px CertSerifKR, "Noto Serif KR", "N
 function certFit(x, text, px, max, w) { let s = px; do { x.font = certFont(s, w); if (x.measureText(text).width <= max) break; s -= 1; } while (s > 10); }
 
 async function drawCertificate(canvas, c) {
- const img = await certLoad();
+ const {img, sig} = await certLoad();
  canvas.width = CERT_W * CERT_SCALE; canvas.height = CERT_H * CERT_SCALE;
  const x = canvas.getContext('2d');
  x.setTransform(1, 0, 0, 1, 0, 0); x.imageSmoothingQuality = 'high';
@@ -36,6 +37,8 @@ async function drawCertificate(canvas, c) {
  field(certDate(c.completed_on), 557, 1043, 350);
  field(`${c.grade}  (${Number(c.average).toFixed(1)})`, 146, 1134, 350);
  field(String(c.cert_no || ''), 557, 1134, 350);
+ // Instructor signature, sitting on the signature line (line spans x 655-917 at y 1253).
+ if (sig) { const sw = 172, sh = sw * sig.height / sig.width; x.drawImage(sig, 786 - sw / 2 + 6, 1262 - sh, sw, sh); }
  // QR code over the template's placeholder.
  x.fillStyle = '#f9f9fc'; x.fillRect(141, 1208, 86, 84);
  if (typeof qrcode === 'function' && c.cert_no) {
