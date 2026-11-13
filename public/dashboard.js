@@ -19,7 +19,7 @@ function summarizeStudentResults(results){
 }
 async function renderStudentDashboard(){
  shell();destroyStudentCharts();const request=dashboardRequest,expectedView=view;
- $('#main').innerHTML='<div class="loading">나의 성적을 분석하고 있습니다…</div>';
+ startLoading('나의 성적을 분석하고 있습니다…');
  try{
   const {results}=await api('/student/results');
   const detailed=await Promise.all(results.map(async r=>{if(r.grading_status!=='confirmed')return r;try{return (await api('/student/results/'+r.id)).result;}catch{return {...r,detailUnavailable:true};}}));

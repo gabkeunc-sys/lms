@@ -8,7 +8,7 @@ function gradingBar(a) {
 }
 async function renderAdminDashboard() {
  shell();
- $('#main').innerHTML = '<div class="loading">운영 현황을 불러오고 있습니다…</div>';
+ startLoading('운영 현황을 불러오고 있습니다…');
  try {
   const {summary: s, instructors, courses, students, assessments} = await api('/admin/overview');
   const byOwner = {};

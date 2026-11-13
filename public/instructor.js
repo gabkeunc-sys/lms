@@ -11,7 +11,7 @@ function teacherHomeLists(results){
 async function teacherPage(){
  if(view==='teach-guidance')return renderTeacherGuidance();
  if(view==='results')return renderResults(true);
- shell();$('#main').innerHTML='<div class="loading">강사 공간을 불러오고 있습니다…</div>';
+ shell();startLoading('강사 공간을 불러오고 있습니다…');
  try{
  const [c,a,r]=await Promise.all([api('/instructor/courses'),api('/instructor/assessments'),view==='courses'||view==='exams'?{results:[]}:api('/instructor/results')]);teacherCourses=c.courses;teacherAssessments=a.assessments;const allResults=r.results;
  if(view==='courses')return courseList();if(view==='exams')return examList();
@@ -64,7 +64,7 @@ async function loadRecentResult(){
  catch(e){if(target.isConnected)target.textContent=e.message;}
 }
 async function renderResults(teacher){
- shell();const expectedView=view;$('#main').innerHTML='<div class="loading">시험 결과를 불러오고 있습니다…</div>';
+ shell();const expectedView=view;startLoading('시험 결과를 불러오고 있습니다…');
  try{
  const {results}=await api(teacher?'/instructor/results':'/student/results');if(view!==expectedView)return;
  const exams=[...new Map(results.map(r=>[r.assessment_id,{title:r.title,course:r.course_title}])).entries()];

@@ -1,5 +1,5 @@
 async function renderTeacherGuidance(){
- shell();$('#main').innerHTML='<div class="loading">학습 지도 목록을 불러오고 있습니다…</div>';
+ shell();startLoading('학습 지도 목록을 불러오고 있습니다…');
  try{const {learners}=await api('/instructor/guidance');if(view!=='teach-guidance')return;
  $('#main').innerHTML=`<section class="intro"><span class="eyebrow">LEARNING COACHING</span><h1>학습 방향 지도</h1><p>학생별 학습 방향을 직접 작성하거나 AI의 도움을 받아 작성하세요.</p></section><section class="panel"><label for="guidance-learner">과정 · 학생 선택</label><select id="guidance-learner"><option value="">학생을 선택하세요</option>${learners.map((l,i)=>`<option value="${i}">${escape(l.course_title)} · ${escape(l.student_name)}</option>`).join('')}</select>${learners.length?'':'<p>담당 과정에 배정된 학생이 없습니다.</p>'}<div id="guidance-editor"></div></section>`;
  $('#guidance-learner').onchange=()=>{const value=$('#guidance-learner').value;if(value===''){$('#guidance-editor').innerHTML='';return;}const l=learners[Number(value)];let working=false;
@@ -12,7 +12,7 @@ async function renderTeacherGuidance(){
  }catch(e){if(view==='teach-guidance')$('#main').innerHTML=`<section class="panel"><p>${escape(e.message)}</p><button class="secondary" id="guidance-retry">다시 시도</button></section>`;$('#guidance-retry')?.addEventListener('click',renderTeacherGuidance);}
 }
 async function renderStudentGuidance(){
- shell();$('#main').innerHTML='<div class="loading">학습 방향을 불러오고 있습니다…</div>';
+ shell();startLoading('학습 방향을 불러오고 있습니다…');
  try{const {guidance}=await api('/student/guidance');if(view!=='guidance')return;
  $('#main').innerHTML=`<section class="intro"><span class="eyebrow">MY NEXT STEP</span><h1>학습 방향</h1><p>강사가 안내한 복습 포인트와 다음 학습 계획을 확인하세요.</p></section>${guidance.map(g=>`<section class="panel guidance-note"><div class="section-heading"><h2>${escape(g.course_title)}</h2><span class="pill">강사 학습 지도</span></div><p class="muted">${escape(g.instructor_name)} · ${date(g.updated_at)} 업데이트</p><div class="guidance-content">${escape(g.content)}</div></section>`).join('')||'<section class="panel"><h2>등록된 학습 방향이 없습니다</h2><p>강사가 학습 방향을 공개하면 여기에 표시됩니다. 성적 대시보드에서 먼저 복습할 개념을 확인하세요.</p><button class="primary" data-view="grades">성적 대시보드</button></section>'}`;bindViews();
  }catch(e){if(view==='guidance')$('#main').innerHTML=`<section class="panel"><p>${escape(e.message)}</p><button class="secondary" id="guidance-retry">다시 시도</button></section>`;$('#guidance-retry')?.addEventListener('click',renderStudentGuidance);}
