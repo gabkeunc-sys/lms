@@ -1,14 +1,21 @@
 let teacherCourses=[],teacherAssessments=[],examDraft=null,questionIndex=0;
 const teacherLabels={'teach-home':'강사 홈',courses:'내 과정',exams:'시험·미니퀴즈',results:'성적·채점','teach-guidance':'학습 방향 지도'};
 const roleLabel=role=>({admin:'관리자',instructor:'강사',student:'학생'}[role]||role);
+const gradingLabel=s=>({pending:'채점 대기',review:'검토 중',confirmed:'확정'}[s]||s);
+function teacherHomeLists(results){
+ const waiting=results.filter(x=>x.grading_status!=='confirmed').slice(0,6),recent=results.slice(0,6);
+ const row=x=>`<tr><td><strong>${escape(x.student_name)}</strong><br><small>${escape(x.course_title)}</small></td><td>${escape(x.title)}</td><td><span class="pill status-${escape(x.grading_status)}">${gradingLabel(x.grading_status)}</span></td><td>${x.grading_status==='confirmed'?`${x.score} / ${x.total}`:'-'}</td><td><small>${date(x.submitted_at)}</small></td></tr>`;
+ const table=(rows,empty)=>rows.length?`<div class="table-wrap"><table><thead><tr><th>학생</th><th>평가</th><th>상태</th><th>점수</th><th>제출일</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div>`:`<p class="empty">${empty}</p>`;
+ return `<div class="home-lists"><section class="panel"><div class="section-heading"><div><h2>채점할 답안</h2><p>주관식 채점이 끝나지 않은 제출입니다.</p></div><button class="secondary" data-view="results">전체 보기</button></div>${table(waiting,'채점할 답안이 없습니다.')}</section><section class="panel"><div class="section-heading"><div><h2>최근 제출</h2><p>최근에 제출된 시험·미니퀴즈입니다.</p></div></div>${table(recent,'아직 제출이 없습니다.')}</section></div>`;
+}
 async function teacherPage(){
  if(view==='teach-guidance')return renderTeacherGuidance();
  if(view==='results')return renderResults(true);
  shell();$('#main').innerHTML='<div class="loading">강사 공간을 불러오고 있습니다…</div>';
  try{
- const [c,a]=await Promise.all([api('/instructor/courses'),api('/instructor/assessments')]);teacherCourses=c.courses;teacherAssessments=a.assessments;
+ const [c,a,r]=await Promise.all([api('/instructor/courses'),api('/instructor/assessments'),view==='courses'||view==='exams'?{results:[]}:api('/instructor/results')]);teacherCourses=c.courses;teacherAssessments=a.assessments;const allResults=r.results;
  if(view==='courses')return courseList();if(view==='exams')return examList();
- $('#main').innerHTML=`<section class="intro"><span class="eyebrow">INSTRUCTOR WORKSPACE</span><h1>강사 홈</h1><p>과정을 만들고, 학습 목표에 맞는 평가를 준비하세요.</p></section><div class="cards"><section class="panel stat"><h2>담당 과정</h2><div class="value">${teacherCourses.length}</div><button class="primary" data-view="courses">과정 관리</button></section><section class="panel stat"><h2>시험·미니퀴즈</h2><div class="value">${teacherAssessments.length}</div><button class="primary" data-view="exams">출제하기</button></section><section class="panel stat"><h2>평가 운영</h2><p>현재 과정 관리와 객관식·주관식 출제와 응시를 사용할 수 있습니다. 성적·채점 메뉴에서 학생별 점수와 정오답을 확인할 수 있습니다.</p></section></div>`;bindViews();
+ $('#main').innerHTML=`<section class="intro"><span class="eyebrow">INSTRUCTOR WORKSPACE</span><h1>강사 홈</h1><p>과정을 만들고, 학습 목표에 맞는 평가를 준비하세요.</p></section><div class="cards"><section class="panel stat"><h2>담당 과정</h2><div class="value">${teacherCourses.length}</div><button class="primary" data-view="courses">과정 관리</button></section><section class="panel stat"><h2>시험·미니퀴즈</h2><div class="value">${teacherAssessments.length}</div><button class="primary" data-view="exams">출제하기</button></section><section class="panel stat highlight"><h2>채점 대기</h2><div class="value">${allResults.filter(x=>x.grading_status!=='confirmed').length}</div><button class="primary" data-view="results">채점하기</button></section></div>${teacherHomeLists(allResults)}`;bindViews();
  }catch(e){$('#main').innerHTML=`<section class="panel"><h1>강사 공간을 불러오지 못했습니다</h1><p>${escape(e.message)}</p><button id="teacher-retry" class="secondary">다시 시도</button></section>`;$('#teacher-retry').onclick=teacherPage;}
 }
 function courseList(){
