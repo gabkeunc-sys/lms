@@ -1,0 +1,23 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {createTestDatabase} from './helpers/d1.mjs';import {pathAPI} from '../server/path.mjs';
+test('weekly modules drive the learning path and only the course owner can edit them',async()=>{
+ const db=await createTestDatabase({migrations:['0001_schema.sql','0004_course_modules.sql']});
+ const teacher='10000000-0000-4000-8000-000000000001',student='10000000-0000-4000-8000-000000000002',other='10000000-0000-4000-8000-000000000003',course='20000000-0000-4000-8000-000000000001',exam='30000000-0000-4000-8000-000000000001';
+ for(const [id,role]of [[teacher,'instructor'],[student,'student'],[other,'instructor']])await db.query('INSERT INTO app_users(id,name,email,password_hash,role) VALUES($1,$2,$3,$4,$5)',[id,role,id+'@example.com','unused',role]);
+ await db.query('INSERT INTO courses(id,owner_id,title,student_ids) VALUES($1,$2,$3,$4)',[course,teacher,'웹 기초',JSON.stringify([student])]);
+ await db.query("INSERT INTO assessments(id,course_id,title,kind,week,published) VALUES($1,$2,'1주차 퀴즈','quiz',1,1)",[exam,course]);
+ await db.query("INSERT INTO assessment_results(id,assessment_id,student_id,questions,answers,score,total,duration_seconds,attempts,first_score) VALUES('r1',$1,$2,'[]','[]',8,10,60,2,4)",[exam,student]);
+ const call=(path,method,session,body={})=>pathAPI({path,method,session,body,query:db.query,response:data=>({status:200,data}),fail:(error,status=400)=>({status,error})});
+ const t={id:teacher,role:'instructor'};
+ assert.equal((await call(`/instructor/courses/${course}/modules`,'POST',{id:other,role:'instructor'},{modules:[]})).status,404);
+ assert.equal((await call(`/instructor/courses/${course}/modules`,'POST',t,{modules:[{week:1,title:'HTML'},{week:1,title:'중복'}]})).status,400);
+ const saved=await call(`/instructor/courses/${course}/modules`,'POST',t,{modules:[{week:1,title:'HTML'},{week:2,title:'CSS',description:'레이아웃'}]});
+ assert.equal(saved.data.modules.length,2);
+ const {paths}=(await call('/student/learning-path','GET',{id:student,role:'student'})).data;
+ assert.equal(paths[0].steps.length,2);
+ assert.equal(paths[0].steps[0].assessments[0].percent,80);
+ assert.equal(paths[0].steps[0].assessments[0].attempts,2);
+ assert.equal(paths[0].steps[0].assessments[0].first_percent,40);
+ assert.equal(paths[0].steps[1].assessments.length,0);
+ assert.equal((await call(`/instructor/learning-path/${student}`,'GET',{id:other,role:'instructor'})).data.paths.length,0);
+ assert.equal((await call(`/instructor/learning-path/${student}`,'GET',t)).data.paths.length,1);
+});
