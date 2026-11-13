@@ -63,7 +63,7 @@ export function createHandler(db) {
    if(['/register','/login'].includes(path) && method==='POST') {
     const email=typeof body.email==='string'?body.email.trim().toLowerCase():'';
     const password=body.password;
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254||typeof password!=='string'||password.length<10||password.length>128) return fail('올바른 이메일과 10~128자 비밀번호를 입력하세요.');
+    if(!(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||(path==='/login'&&/^[a-z0-9._-]{3,40}$/.test(email)))||email.length>254||typeof password!=='string'||password.length<10||password.length>128) return fail('올바른 이메일과 10~128자 비밀번호를 입력하세요.');
     for(const [key,max] of [[`ip:${context.ip||'unknown'}`,40],[`email:${email}`,12]]) {
      const keyHash=digest(key);
      const count=(await query(`INSERT INTO auth_limits(key,hits,expires_at) VALUES($1,1,${nowPlus('+15 minutes')}) ON CONFLICT(key) DO UPDATE SET hits=CASE WHEN auth_limits.expires_at<${NOW} THEN 1 ELSE auth_limits.hits+1 END, expires_at=CASE WHEN auth_limits.expires_at<${NOW} THEN ${nowPlus('+15 minutes')} ELSE auth_limits.expires_at END RETURNING hits`,[keyHash])).rows[0].hits;
