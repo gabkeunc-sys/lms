@@ -13,11 +13,13 @@ export async function adminOverviewAPI({method, session, query, response, fail})
   (SELECT count(*) FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id JOIN courses c ON c.id=a.course_id WHERE c.owner_id=u.id AND ${live} AND r.grading_status<>'confirmed') AS pending
   FROM app_users u WHERE u.role='instructor' OR EXISTS(SELECT 1 FROM courses c WHERE c.owner_id=u.id AND ${live})
   ORDER BY u.name`)).rows;
- const courses = (await query(`SELECT c.id,c.title,c.status,u.name AS owner_name,json_array_length(c.student_ids) AS enrolled,
+ const courses = (await query(`SELECT c.id,c.title,c.status,c.start_date,c.end_date,c.created_at,u.name AS owner_name,
+  (SELECT count(*) FROM assessments a WHERE a.course_id=c.id) AS assessments,
+  (SELECT count(*) FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id WHERE a.course_id=c.id AND r.grading_status<>'confirmed') AS pending,json_array_length(c.student_ids) AS enrolled,
   (SELECT count(*) FROM assessments a WHERE a.course_id=c.id AND a.published=1) AS published_assessments,
   (SELECT count(*) FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id WHERE a.course_id=c.id AND a.published=1) AS taken,
   (SELECT avg(r.score*100.0/r.total) FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id WHERE a.course_id=c.id AND r.grading_status='confirmed') AS average
-  FROM courses c JOIN app_users u ON u.id=c.owner_id WHERE ${live} ORDER BY c.title`)).rows
+  FROM courses c JOIN app_users u ON u.id=c.owner_id WHERE ${live} ORDER BY c.created_at DESC,c.title`)).rows
   .map(c => ({...c, average: pct(c.average), participation: c.enrolled && c.published_assessments ? pct(c.taken * 100 / (c.enrolled * c.published_assessments)) : null}));
  const students = (await query(`SELECT u.id,u.name,u.email,u.active,
   (SELECT count(*) FROM courses c, json_each(c.student_ids) j WHERE j.value=u.id AND ${live}) AS courses,

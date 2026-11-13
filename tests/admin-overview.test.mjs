@@ -16,6 +16,6 @@ test('admin overview reports instructors, students and assessment operations, ad
  const essay=data.assessments.find(a=>a.id==='9aa97137-bc25-4b1e-bc2e-6b520dd08772');
  assert.equal(essay.takers,9);assert.equal(essay.not_taken,0);assert.equal(essay.pending,9);assert.equal(essay.text_questions,1);
  const exam=data.assessments.find(a=>a.id==='ad06a855-9a44-4dfa-aeda-43abfe37dd06');assert.equal(exam.confirmed,9);assert.ok(exam.average>0);
- const course=data.courses[0];assert.equal(course.enrolled,9);assert.equal(course.participation,100);
+ const course=data.courses[0];assert.equal(course.enrolled,9);assert.equal(course.participation,100);assert.equal(course.assessments,3);assert.equal(course.pending,9);assert.ok('start_date' in course);
  assert.equal(data.students.find(s=>s.email==='learner@example.com').courses,0);
 });

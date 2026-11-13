@@ -16,7 +16,7 @@ async function renderAdminDashboard() {
   const table = (head, rows, empty) => rows.length ? `<div class="table-wrap"><table><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>` : `<p class="empty">${empty}</p>`;
   $('#main').innerHTML = `<section class="intro"><span class="eyebrow">ADMIN CONSOLE</span><h1>운영 현황</h1><p>강사·학생·시험 운영 상황을 한눈에 확인하세요.</p></section>
   <div class="cards admin-cards">
-   <section class="panel stat"><h2>강사</h2><div class="value">${s.instructors}</div><p>개설 과정 ${s.courses}개</p></section>
+   <section class="panel stat"><h2>강사 · 개설 과정</h2><div class="value">${s.instructors} · ${s.courses}</div><p>진행 중 과정 ${courses.filter(c => c.status === 'active').length}개</p></section>
    <section class="panel stat"><h2>학생</h2><div class="value">${s.students}</div><p>활성 ${s.active_students}명</p></section>
    <section class="panel stat"><h2>시험 응시율</h2><div class="value">${s.participation === null ? '-' : s.participation + '%'}</div><p>공개 평가 ${s.published_assessments}개 · 제출 ${s.submissions}건</p></section>
    <section class="panel stat highlight"><h2>채점 진행 필요</h2><div class="value">${s.pending + s.review}</div><p>채점 대기 ${s.pending} · AI 검토 ${s.review}</p></section>
@@ -24,9 +24,10 @@ async function renderAdminDashboard() {
   <section class="panel admin-section"><div class="section-heading"><div><h2>강사 현황</h2><p>강사별 담당 과정, 수강생, 평가와 채점 대기 건수입니다.</p></div><button class="secondary" data-view="members">회원 관리</button></div>
    ${table(['강사', '과정', '수강생', '평가', '제출', '채점 대기'], instructors.map(i => `<tr><td><strong>${escape(i.name)}</strong><br><small>${escape(i.email)}</small></td><td>${i.courses}</td><td>${i.students}</td><td>${i.assessments}</td><td>${i.submissions}</td><td>${i.pending ? `<span class="pill status-pending">${i.pending}건</span>` : '<span class="pill status-confirmed">없음</span>'}</td></tr>`), '등록된 강사가 없습니다.')}
   </section>
-  <section class="panel admin-section"><div class="section-heading"><div><h2>학생 현황</h2><p>과정별 수강 인원, 공개 평가 응시율, 확정 성적 평균(100점 환산)입니다.</p></div></div>
-   ${table(['과정', '강사', '수강생', '공개 평가', '응시율', '평균'], courses.map(c => `<tr><td><strong>${escape(c.title)}</strong></td><td>${escape(c.owner_name)}</td><td>${c.enrolled}</td><td>${c.published_assessments}</td><td>${rateBar(c.participation)}</td><td>${fmt(c.average)}</td></tr>`), '개설된 과정이 없습니다.')}
-   <h3 class="sub-heading">학생별</h3>
+  <section class="panel admin-section"><div class="section-heading"><div><h2>개설 과정 현황</h2><p>과정별 담당 강사, 교육 기간과 상태, 수강 인원, 평가 수, 응시율, 평균(100점 환산), 채점 대기입니다.</p></div></div>
+   ${table(['과정', '강사', '교육 기간', '상태', '수강생', '평가 (공개)', '응시율', '평균', '채점 대기'], courses.map(c => `<tr><td><strong>${escape(c.title)}</strong></td><td>${escape(c.owner_name)}</td><td><small>${c.start_date ? escape(c.start_date) : '미정'} ~ ${c.end_date ? escape(c.end_date) : '미정'}</small></td><td><span class="pill ${c.status === 'active' ? 'status-confirmed' : c.status === 'preparing' ? 'status-pending' : 'gray'}">${({preparing: '준비', active: '진행', ended: '종료'})[c.status] || escape(c.status)}</span></td><td>${c.enrolled}</td><td>${c.assessments} (${c.published_assessments})</td><td>${rateBar(c.participation)}</td><td>${fmt(c.average)}</td><td>${c.pending ? `<span class="pill status-pending">${c.pending}건</span>` : '<span class="pill status-confirmed">없음</span>'}</td></tr>`), '개설된 과정이 없습니다.')}
+  </section>
+  <section class="panel admin-section"><div class="section-heading"><div><h2>학생 현황</h2><p>학생별 수강 과정, 공개 평가 응시율, 확정 성적 평균(100점 환산)입니다.</p></div></div>
    ${table(['학생', '수강 과정', '응시 / 배정', '응시율', '평균', '상태'], students.map(st => `<tr><td><strong>${escape(st.name)}</strong><br><small>${escape(st.email)}</small></td><td>${st.courses}</td><td>${st.taken} / ${st.assigned}</td><td>${rateBar(st.assigned ? Math.round(st.taken * 1000 / st.assigned) / 10 : null)}</td><td>${fmt(st.average)}</td><td><span class="pill ${st.active ? '' : 'gray'}">${st.active ? '활성' : '비활성'}</span></td></tr>`), '등록된 학생이 없습니다.')}
   </section>
   <section class="panel admin-section"><div class="section-heading"><div><h2>강사별 시험 운영 현황</h2><p>평가별 응시·미응시 인원과 채점 진행 상황(강사 확정 / AI 제안 검토 / 대기)입니다.</p></div></div>
