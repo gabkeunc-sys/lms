@@ -28,7 +28,7 @@ export async function adminOverviewAPI({method, session, query, response, fail})
   (SELECT avg(r.score*100.0/r.total) FROM assessment_results r WHERE r.student_id=u.id AND r.grading_status='confirmed') AS average
   FROM app_users u WHERE u.role='student' ORDER BY u.name`)).rows
   .map(s => ({...s, average: pct(s.average)}));
- const assessments = (await query(`SELECT a.id,a.title,a.kind,a.week,a.published,c.title AS course_title,u.id AS owner_id,u.name AS owner_name,
+ const assessments = (await query(`SELECT a.id,a.title,a.kind,a.week,a.published,c.title AS course_title,c.start_date AS course_start,c.end_date AS course_end,u.id AS owner_id,u.name AS owner_name,
   json_array_length(c.student_ids) AS enrolled,
   (SELECT count(*) FROM json_each(a.questions) q WHERE json_extract(q.value,'$.type')='text') AS text_questions,
   count(r.id) AS takers,

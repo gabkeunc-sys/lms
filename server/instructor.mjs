@@ -38,7 +38,7 @@ export async function instructorAPI({path,method,body,session,query,response,fai
   const r=body.id?await query('UPDATE courses SET title=$1,description=$2,start_date=$3,end_date=$4,status=$5,student_ids=$6 WHERE id=$7 RETURNING *',[...vals,body.id]):await query('INSERT INTO courses(title,description,start_date,end_date,status,student_ids,id,owner_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[...vals,randomUUID(),session.id]);
   return response({course:r.rows[0]});
  }
- if(path==='/instructor/assessments'&&method==='GET')return response({assessments:(await query('SELECT a.*,c.title AS course_title,(SELECT count(*) FROM assessment_results r WHERE r.assessment_id=a.id) AS result_count FROM assessments a JOIN courses c ON c.id=a.course_id WHERE c.deleted_at IS NULL AND (c.owner_id=$1 OR $2=true) ORDER BY a.created_at DESC',[session.id,session.role==='admin'])).rows});
+ if(path==='/instructor/assessments'&&method==='GET')return response({assessments:(await query('SELECT a.*,c.title AS course_title,c.start_date AS course_start,c.end_date AS course_end,(SELECT count(*) FROM assessment_results r WHERE r.assessment_id=a.id) AS result_count FROM assessments a JOIN courses c ON c.id=a.course_id WHERE c.deleted_at IS NULL AND (c.owner_id=$1 OR $2=true) ORDER BY a.created_at DESC',[session.id,session.role==='admin'])).rows});
  if(path==='/instructor/assessments'&&method==='POST'){
   if(!await course(body.course_id))return fail('담당 과정을 선택하세요.',403);
   if(!text(body.title,160)||!['exam','quiz'].includes(body.kind)||!Number.isInteger(body.week)||body.week<1||body.week>100||!Number.isInteger(body.duration)||body.duration<1||body.duration>240)return fail('평가 제목, 주차, 제한 시간을 확인하세요.');

@@ -9,7 +9,7 @@ export async function assessmentAPI({path,method,body,session,query,response,fai
  if(teacher&&!['admin','instructor'].includes(session.role))return fail('강사만 접근할 수 있습니다.',403);
  if(!teacher&&session.role!=='student')return fail('학생 계정으로 응시하세요.',403);
  const match=path.match(/^\/(?:instructor|student)\/(assessments|results)\/([a-f0-9-]{36})(?:\/(start|submit|publish|analyze|confirm))?$/);
- if(path==='/student/assessments'&&method==='GET')return response({assessments:(await query(`SELECT a.id,a.title,a.kind,a.week,a.duration,a.opens_at,a.closes_at,c.title AS course_title,r.id AS result_id FROM assessments a JOIN courses c ON c.id=a.course_id LEFT JOIN assessment_results r ON r.assessment_id=a.id AND r.student_id=$1 WHERE c.deleted_at IS NULL AND a.published=1 AND EXISTS(SELECT 1 FROM json_each(c.student_ids) WHERE value=$1) ORDER BY a.created_at DESC`,[session.id])).rows});
+ if(path==='/student/assessments'&&method==='GET')return response({assessments:(await query(`SELECT a.id,a.title,a.kind,a.week,a.duration,a.opens_at,a.closes_at,c.title AS course_title,c.start_date AS course_start,c.end_date AS course_end,r.id AS result_id FROM assessments a JOIN courses c ON c.id=a.course_id LEFT JOIN assessment_results r ON r.assessment_id=a.id AND r.student_id=$1 WHERE c.deleted_at IS NULL AND a.published=1 AND EXISTS(SELECT 1 FROM json_each(c.student_ids) WHERE value=$1) ORDER BY a.created_at DESC`,[session.id])).rows});
  if(!match)return fail('요청을 찾을 수 없습니다.',404);
  const [,resource,id,action]=match;
  if(resource==='results'){

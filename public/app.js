@@ -1,6 +1,8 @@
 const $=s=>document.querySelector(s);
 let user=null,mode='login',page=1,search='',view='home';
 const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const coursePeriod=x=>{const s=x.course_start||x.start_date,e=x.course_end||x.end_date;if(!s&&!e)return '';const f=d=>d?String(d).slice(0,10).replaceAll('-','.'):'미정';return ` (${f(s)} ~ ${f(e)})`;};
+const courseName=x=>escape(x.course_title)+escape(coursePeriod(x));
 const date=s=>new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul'}).format(new Date(s));
 async function api(path,options={}){
  const response=await fetch('/api'+path,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json',...options.headers}});

@@ -8,7 +8,7 @@ export async function resultsAPI({path,method,session,query,response,fail}){
  const params=teacher?[session.id,session.role==='admin']:[session.id];
  if(match){params.push(match[1]);}
  const rows=(await query(`SELECT r.id,r.assessment_id,r.student_id,r.score,r.total,r.submitted_at,r.duration_seconds,r.grading_status,r.revision,
- a.title,a.kind,a.week,c.title AS course_title,u.name AS student_name
+ a.title,a.kind,a.week,c.title AS course_title,c.start_date AS course_start,c.end_date AS course_end,u.name AS student_name
  ${match?',r.questions,r.answers,r.grading':''}
  FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id JOIN courses c ON c.id=a.course_id JOIN app_users u ON u.id=r.student_id
  WHERE ${scope}${match?' AND r.id=$'+params.length:''} ORDER BY r.submitted_at DESC,u.name`,params)).rows;
