@@ -1,22 +1,75 @@
+// Learning direction rendered as sectioned cards. Works for the seeded "■ 제목" style, Markdown headings and **제목** lines.
+const GUIDE_KINDS=[
+ [/현재|상태|요약/,'status','현재 학습 상태','M4 20V10M10 20V4M16 20v-7'],
+ [/잘한|강점|잘하고/,'good','잘한 점','M5 12l4 4 10-10'],
+ [/보완|부족|약점|복습할/,'weak','보완할 개념','M12 8v5M12 16.5v.5M10.3 3.9L2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z'],
+ [/예측|전망|예상/,'predict','예측','M3 17l6-6 4 4 8-8M15 7h6v6'],
+ [/계획|다음|목표|학습 방법/,'plan','학습 계획','M4 5h16v15H4zM4 9h16M9 3v4M15 3v4'],
+ [/한마디|격려|코멘트|의견/,'note','강사 한마디','M5 5h14v10H9l-4 4z']];
+function parseGuidance(text){
+ const lines=String(text||'').split('\n'),sections=[];let cur={title:'',kind:'intro',lines:[]};
+ const heading=l=>{const m=l.match(/^\s*(?:■|▶|#{1,4})\s*(.+?)\s*$/)||l.match(/^\s*(?:\d+\.\s*)?\*\*([^*]{1,30})\*\*\s*:?\s*$/)||l.match(/^\s*\[([^\]]{1,30})\]\s*$/);return m?m[1].replace(/\*\*/g,'').replace(/[:：]$/,''):null;};
+ for(const l of lines){const h=heading(l);if(h){if(cur.lines.join('').trim()||cur.title)sections.push(cur);const k=GUIDE_KINDS.find(([re])=>re.test(h));cur={title:h,kind:k?k[1]:'other',lines:[]};}else cur.lines.push(l);}
+ if(cur.lines.join('').trim()||cur.title)sections.push(cur);
+ return sections;
+}
+function guideBody(lines){
+ const out=[];let list=null;const flush=()=>{if(list){out.push(`<${list.t} class="g-list">${list.items.join('')}</${list.t}>`);list=null;}};
+ for(const raw of lines){const l=raw.trim();if(!l){flush();continue;}
+  let m;const inline=t=>rich(t).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  if((m=l.match(/^[-*•]\s+(.*)/))){if(list?.t!=='ul'){flush();list={t:'ul',items:[]};}list.items.push(`<li>${inline(m[1])}</li>`);}
+  else if((m=l.match(/^\d+[.)]\s+(.*)/))){if(list?.t!=='ol'){flush();list={t:'ol',items:[]};}list.items.push(`<li>${inline(m[1])}</li>`);}
+  else{flush();out.push(`<p>${inline(l)}</p>`);}}
+ flush();return out.join('');
+}
+function renderGuidanceCards(text){
+ const sections=parseGuidance(text);
+ if(!sections.some(s=>s.title))return `<div class="g-card g-other g-full"><div class="g-body">${guideBody(String(text||'').split('\n'))}</div></div>`;
+ return `<div class="g-grid">${sections.map(s=>{const k=GUIDE_KINDS.find(x=>x[1]===s.kind);const full=['intro','status','note','other'].includes(s.kind)||s.kind==='plan';
+  return s.kind==='intro'?`<p class="g-intro">${guideBody(s.lines).replace(/<\/?p>/g,'')}</p>`:`<section class="g-card g-${s.kind}${full?' g-full':''}"><h3>${k?`<span class="g-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="${k[3]}"/></svg></span>`:''}${escape(s.title)}${s.kind==='predict'?AI_MARK:''}</h3><div class="g-body">${guideBody(s.lines)}</div></section>`;}).join('')}</div>`;
+}
 async function renderTeacherGuidance(){
  shell();startLoading('학습 지도 목록을 불러오고 있습니다…');
  try{const [{learners},{prompts}]=await Promise.all([api('/instructor/guidance'),api('/instructor/guidance/prompts')]);if(view!=='teach-guidance')return;
- $('#main').innerHTML=`<section class="intro"><span class="eyebrow">LEARNING COACHING</span><h1>학습 방향 지도 ${AI_MARK}</h1><p>학생별 학습 방향을 직접 작성하거나 AI의 도움을 받아 작성하세요.</p></section><section class="panel"><label for="guidance-learner">과정 · 학생 선택</label><select id="guidance-learner"><option value="">학생을 선택하세요</option>${learners.map((l,i)=>`<option value="${i}">${courseName(l)} · ${escape(l.student_name)}</option>`).join('')}</select>${learners.length?'':'<p>담당 과정에 배정된 학생이 없습니다.</p>'}<div id="guidance-editor"></div></section><section class="panel" id="prompt-panel"></section>`;
+ const st=l=>!l.content?['none','미작성']:l.published?['pub','공개 중']:['draft','비공개 초안'];
+ const counts={pub:learners.filter(l=>l.content&&l.published).length,draft:learners.filter(l=>l.content&&!l.published).length,none:learners.filter(l=>!l.content).length};
+ const courses=[...new Map(learners.map(l=>[l.course_id,l])).values()];
+ $('#main').innerHTML=`<section class="intro dashboard-intro"><div><span class="eyebrow">LEARNING COACHING</span><h1>학습 방향 지도 ${AI_MARK}</h1><p>AI가 시험 기록을 바탕으로 초안을 쓰고, 강사님이 검토·확정해 학생에게 공개합니다. 직접 작성도 할 수 있습니다.</p></div></section>
+ <div class="g-kpis"><div class="g-kpi"><span>공개 중</span><strong>${counts.pub}</strong></div><div class="g-kpi"><span>비공개 초안</span><strong>${counts.draft}</strong></div><div class="g-kpi"><span>미작성</span><strong>${counts.none}</strong></div><div class="g-kpi"><span>지시문 문서</span><strong>${prompts.length}</strong></div></div>
+ <div class="g-layout"><div class="panel g-learners"><div class="g-learners-head"><input id="g-search" type="search" placeholder="학생 이름 검색" aria-label="학생 이름 검색"><select id="g-course" aria-label="과정"><option value="">전체 과정</option>${courses.map(c=>`<option value="${c.course_id}">${escape(c.course_title)}</option>`).join('')}</select></div><div id="g-list" class="g-list-items" role="listbox" aria-label="학생 목록"></div></div>
+ <section class="panel g-editor" id="guidance-editor"><div class="g-empty"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></svg><h2>학생을 선택하세요</h2><p>왼쪽 목록에서 학생을 고르면 러닝 패스와 함께 학습 방향을 작성·검토할 수 있습니다.</p></div></section></div>
+ <section class="panel" id="prompt-panel"></section>`;
  renderPromptPanel(prompts,learners);
- $('#guidance-learner').onchange=()=>{const value=$('#guidance-learner').value;if(value===''){$('#guidance-editor').innerHTML='';return;}const l=learners[Number(value)];let working=false;
- $('#guidance-editor').innerHTML=`<div class="section-heading"><h2>${escape(l.student_name)}님의 학습 방향</h2><span class="pill ${l.published?'':'gray'}">${l.published?'학생에게 공개 중':'비공개'}</span></div><div class="guidance-path"><h3 class="sub-heading">러닝 패스</h3><div id="guidance-path"><div class="loading">러닝 패스를 불러오고 있습니다…</div></div></div><p>AI에는 최근 확정된 평가 최대 10건의 주차·점수·문항 유형·개념 태그·득점만 전송합니다. 이름·이메일·답안 원문은 전송하지 않습니다.</p><label class="student-choice"><input type="checkbox" id="guidance-privacy">개념 태그에 개인정보가 없는지 확인했습니다.</label><label for="guidance-prompt">적용할 지시문 ${AI_MARK}</label><select id="guidance-prompt">${prompts.filter(p=>!p.course_id||p.course_id===l.course_id).sort((a,b)=>(b.course_id===l.course_id)-(a.course_id===l.course_id)).map(p=>`<option value="${p.id}">${escape(p.title)}${p.course_id?' · 과정 전용':p.is_default?' · 기본':''}</option>`).join('')}</select><button class="secondary" id="guidance-generate">${AI_MARK} AI로 학습 방향 작성</button><label for="guidance-content">학습 방향 · 강사 의견</label><textarea id="guidance-content" maxlength="8000" rows="16" placeholder="현재 학습 상태, 잘한 점, 보완할 개념, 다음 주 학습 계획을 작성하세요.">${escape(l.content||'')}</textarea><p class="muted">AI 작성 내용도 자유롭게 수정할 수 있습니다. 저장해야 반영됩니다.</p><label class="student-choice"><input id="guidance-published" type="checkbox" ${l.published?'checked':''}>학생에게 공개</label><div class="quick-actions"><button class="primary" id="guidance-save">학습 방향 저장</button></div><p id="guidance-status" role="status"></p>`;
- api('/instructor/learning-path/'+l.student_id).then(r=>renderLearningPath($('#guidance-path'),r.paths.filter(p=>p.course_id===l.course_id),{title:false})).catch(e=>{if($('#guidance-path'))$('#guidance-path').innerHTML=`<p class="empty">${escape(e.message)}</p>`;});
- const status=$('#guidance-status'),content=$('#guidance-content'),save=$('#guidance-save'),generate=$('#guidance-generate');
- const busy=v=>{working=v;save.disabled=v;generate.disabled=v;$('#guidance-learner').disabled=v;content.disabled=v;};
- generate.onclick=async()=>{if(working)return;if(!$('#guidance-privacy').checked){status.textContent='AI 전송 항목을 확인하고 체크해 주세요.';return;}if(content.value.trim()&&!confirm('현재 편집 내용을 AI 작성 결과로 교체할까요? 저장된 내용은 저장 버튼을 누르기 전까지 유지됩니다.'))return;busy(true);status.textContent='성적을 바탕으로 학습 방향을 작성하고 있습니다…';try{const r=await api('/instructor/guidance/generate',{method:'POST',body:JSON.stringify({course_id:l.course_id,student_id:l.student_id,privacyChecked:true,prompt_id:$('#guidance-prompt').value||undefined})});content.value=r.content;status.textContent='AI 작성이 완료되었습니다. 내용을 검토·수정한 뒤 저장하세요.';}catch(e){status.textContent=e.message+' 직접 작성해 저장할 수도 있습니다.';}finally{busy(false);}};
- save.onclick=async()=>{if(working)return;if(!content.value.trim()){status.textContent='학습 방향을 입력하세요.';return;}busy(true);status.textContent='저장 중입니다…';try{const published=$('#guidance-published').checked,r=await api('/instructor/guidance',{method:'POST',body:JSON.stringify({course_id:l.course_id,student_id:l.student_id,content:content.value,published,revision:l.revision||0})});l.content=content.value;l.published=published;l.revision=r.revision;$('#guidance-editor .pill').textContent=published?'학생에게 공개 중':'비공개';status.textContent=published?'저장했습니다. 학생의 학습 방향 화면에서 확인할 수 있습니다.':'비공개로 저장했습니다.';}catch(e){status.textContent=e.message;}finally{busy(false);}};
+ let current=-1,working=false;
+ const drawList=()=>{const q=$('#g-search').value.trim(),c=$('#g-course').value;$('#g-list').innerHTML=learners.map((l,i)=>[l,i]).filter(([l])=>(!q||l.student_name.includes(q))&&(!c||l.course_id===c)).map(([l,i])=>{const [k,t]=st(l);return `<button type="button" class="g-item${i===current?' selected':''}" data-i="${i}" role="option" aria-selected="${i===current}"><span class="g-avatar">${escape(l.student_name.slice(0,1))}</span><span class="g-item-main"><strong>${escape(l.student_name)}</strong><small>${escape(l.course_title)}</small></span><span class="g-state g-${k}">${t}</span></button>`;}).join('')||'<p class="empty">조건에 맞는 학생이 없습니다.</p>';$('#g-list').querySelectorAll('.g-item').forEach(b=>b.onclick=()=>{if(working)return;current=Number(b.dataset.i);drawList();open(learners[current]);});};
+ $('#g-search').oninput=drawList;$('#g-course').onchange=drawList;drawList();
+ const open=l=>{
+  const [k,t]=st(l);
+  $('#guidance-editor').innerHTML=`<div class="g-editor-head"><div><span class="eyebrow">${escape(l.course_title)}${escape(coursePeriod(l))}</span><h2>${escape(l.student_name)}님의 학습 방향</h2></div><span class="g-state g-${k}" id="g-state">${t}</span></div>
+  <details class="g-section" open><summary>러닝 패스</summary><div id="guidance-path"><div class="loading">러닝 패스를 불러오고 있습니다…</div></div></details>
+  <div class="g-ai"><div class="g-ai-head"><strong>${AI_MARK} AI 초안 작성</strong><small>최근 확정된 평가 최대 10건의 주차·점수·문항 유형·개념 태그·득점만 전송합니다. 이름·이메일·답안 원문은 보내지 않습니다.</small></div><div class="g-ai-row"><label for="guidance-prompt">적용할 지시문</label><select id="guidance-prompt">${prompts.filter(p=>!p.course_id||p.course_id===l.course_id).sort((a,b)=>(b.course_id===l.course_id)-(a.course_id===l.course_id)).map(p=>`<option value="${p.id}">${escape(p.title)}${p.course_id?' · 과정 전용':p.is_default?' · 기본':''}</option>`).join('')}</select><button class="primary" id="guidance-generate">${AI_MARK} AI로 초안 작성</button></div><label class="student-choice"><input type="checkbox" id="guidance-privacy">개념 태그에 개인정보가 없는지 확인했습니다.</label></div>
+  <div class="g-tabs subtabs inline" role="tablist"><button type="button" class="selected" data-tab="edit">편집</button><button type="button" data-tab="preview">학생 화면 미리보기</button></div>
+  <div class="g-edit" id="g-edit"><textarea id="guidance-content" maxlength="8000" rows="18" placeholder="■ 현재 학습 상태&#10;■ 잘한 점&#10;■ 보완할 개념&#10;■ 예측&#10;■ 다음 2주 학습 계획&#10;처럼 제목을 달면 학생 화면에서 카드로 나뉘어 보입니다.">${escape(l.content||'')}</textarea></div>
+  <div class="g-preview" id="g-preview" hidden></div>
+  <div class="g-actions"><label class="g-switch"><input id="guidance-published" type="checkbox" ${l.published?'checked':''}><span></span>학생에게 공개</label><span id="guidance-status" role="status"></span><button class="primary" id="guidance-save">확정·저장</button></div>`;
+  api('/instructor/learning-path/'+l.student_id).then(r=>renderLearningPath($('#guidance-path'),r.paths.filter(p=>p.course_id===l.course_id),{title:false})).catch(e=>{if($('#guidance-path'))$('#guidance-path').innerHTML=`<p class="empty">${escape(e.message)}</p>`;});
+  const status=$('#guidance-status'),content=$('#guidance-content'),save=$('#guidance-save'),generate=$('#guidance-generate');
+  const showTab=tab=>{document.querySelectorAll('.g-tabs button').forEach(b=>b.classList.toggle('selected',b.dataset.tab===tab));$('#g-edit').hidden=tab!=='edit';$('#g-preview').hidden=tab!=='preview';if(tab==='preview')$('#g-preview').innerHTML=content.value.trim()?renderGuidanceCards(content.value):'<p class="empty">작성된 내용이 없습니다.</p>';};
+  document.querySelectorAll('.g-tabs button').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+  const busy=v=>{working=v;save.disabled=v;generate.disabled=v;content.disabled=v;};
+  generate.onclick=async()=>{if(working)return;if(!$('#guidance-privacy').checked){status.textContent='AI 전송 항목을 확인하고 체크해 주세요.';return;}if(content.value.trim()&&!confirm('현재 편집 내용을 AI 초안으로 교체할까요? 저장하기 전까지는 반영되지 않습니다.'))return;busy(true);generate.classList.add('loading-btn');status.textContent='시험 기록을 바탕으로 초안을 작성하고 있습니다…';try{const r=await api('/instructor/guidance/generate',{method:'POST',body:JSON.stringify({course_id:l.course_id,student_id:l.student_id,privacyChecked:true,prompt_id:$('#guidance-prompt').value||undefined})});content.value=r.content;showTab('preview');status.textContent='AI 초안이 준비되었습니다. 검토·수정한 뒤 확정하세요.';}catch(e){status.textContent=e.message;}finally{busy(false);generate.classList.remove('loading-btn');}};
+  save.onclick=async()=>{if(working)return;if(!content.value.trim()){status.textContent='학습 방향을 입력하세요.';return;}busy(true);status.textContent='저장 중입니다…';try{const published=$('#guidance-published').checked,r=await api('/instructor/guidance',{method:'POST',body:JSON.stringify({course_id:l.course_id,student_id:l.student_id,content:content.value,published,revision:l.revision||0})});l.content=content.value;l.published=published;l.revision=r.revision;const [k2,t2]=st(l);$('#g-state').className='g-state g-'+k2;$('#g-state').textContent=t2;drawList();status.textContent=published?'확정했습니다. 학생 화면에 공개됩니다.':'비공개 초안으로 저장했습니다.';}catch(e){status.textContent=e.message;}finally{busy(false);}};
  };
  }catch(e){if(view==='teach-guidance')$('#main').innerHTML=`<section class="panel"><p>${escape(e.message)}</p><button class="secondary" id="guidance-retry">다시 시도</button></section>`;$('#guidance-retry')?.addEventListener('click',renderTeacherGuidance);}
 }
 async function renderStudentGuidance(){
  shell();startLoading('학습 방향을 불러오고 있습니다…');
  try{const {guidance}=await api('/student/guidance');if(view!=='guidance')return;
- $('#main').innerHTML=`<section class="intro"><span class="eyebrow">MY NEXT STEP</span><h1>학습 방향</h1><p>강사가 안내한 복습 포인트와 다음 학습 계획을 확인하세요.</p></section>${guidance.map(g=>`<section class="panel guidance-note"><div class="section-heading"><h2>${courseName(g)}</h2><span class="pill">강사 학습 지도</span>${AI_MARK}</div><p class="muted">${escape(g.instructor_name)} · ${date(g.updated_at)} 업데이트</p><div class="guidance-content">${escape(g.content)}</div></section>`).join('')||'<section class="panel"><h2>등록된 학습 방향이 없습니다</h2><p>강사가 학습 방향을 공개하면 여기에 표시됩니다. 성적 대시보드에서 먼저 복습할 개념을 확인하세요.</p><button class="primary" data-view="grades">성적 대시보드</button></section>'}`;bindViews();
+ $('#main').innerHTML=`<section class="intro"><span class="eyebrow">MY NEXT STEP</span><h1>학습 방향 ${AI_MARK}</h1><p>시험 기록을 바탕으로 AI가 분석하고 강사님이 확정한 나만의 학습 방향입니다.</p></section>${guidance.length>1?`<div class="subtabs inline g-course-tabs" role="tablist">${guidance.map((g,i)=>`<button type="button" data-i="${i}" class="${i===0?'selected':''}">${escape(g.course_title)}</button>`).join('')}</div>`:''}<div id="g-student"></div>`;
+ const draw=i=>{const g=guidance[i];if(!g){$('#g-student').innerHTML='<section class="panel g-empty"><h2>아직 공개된 학습 방향이 없습니다</h2><p>강사님이 학습 방향을 확정하면 여기에 표시됩니다. 먼저 성적 대시보드에서 복습할 개념을 확인해 보세요.</p><button class="primary" data-view="grades">성적 대시보드</button></section>';bindViews();return;}
+  $('#g-student').innerHTML=`<section class="panel g-sheet"><div class="g-sheet-head"><div><span class="eyebrow">${escape(g.course_title)}${escape(coursePeriod(g))}</span><h2>나의 학습 방향</h2></div><div class="g-meta"><span class="g-state g-pub">강사 확정</span><span>${escape(g.instructor_name)} 강사 · ${date(g.updated_at)} 업데이트</span></div></div>${renderGuidanceCards(g.content)}<div class="g-sheet-foot"><button class="secondary" data-view="path">러닝 패스 보기</button><button class="secondary" data-view="grades">성적 대시보드</button></div></section>`;bindViews();};
+ document.querySelectorAll('.g-course-tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.g-course-tabs button').forEach(x=>x.classList.toggle('selected',x===b));draw(Number(b.dataset.i));});
+ draw(0);
  }catch(e){if(view==='guidance')$('#main').innerHTML=`<section class="panel"><p>${escape(e.message)}</p><button class="secondary" id="guidance-retry">다시 시도</button></section>`;$('#guidance-retry')?.addEventListener('click',renderStudentGuidance);}
 }
 
