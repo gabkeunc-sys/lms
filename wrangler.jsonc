@@ -13,7 +13,7 @@
     {
       "binding": "DB",
       "database_name": "lms",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "62623e7a-3d83-4c7a-b3c7-4d0d68f4ced0",
       "migrations_dir": "migrations"
     }
   ],
