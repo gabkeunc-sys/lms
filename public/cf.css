@@ -1,0 +1,131 @@
+/* Dashboard theme (Cloudflare-dashboard style): white surfaces, grey lines, one orange accent.
+   Loaded last so it overrides the earlier page styles. Yellow is kept only for highlights and warnings. */
+:root{
+ --orange:#f38020;--orange-dark:#d8670c;--orange-soft:#fff3e8;
+ --yellow:#fbbf24;--yellow-soft:#fff8e1;
+ --ink:#1d1f20;--text:#4e5359;--muted:#7a8088;--line:#e3e5e8;--line-strong:#d0d4d9;
+ --bg:#f5f6f7;--panel:#fff;--side:#fafafa;--bar:#1d1f20;
+ --green:#18a058;--red:#d93025;
+ --radius:6px;--top:52px;--side-w:232px;
+ font-family:Inter,'Pretendard','Noto Sans KR',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+ color:var(--ink);background:var(--bg);
+}
+body{background:var(--bg);color:var(--ink);font-size:14px}
+p{color:var(--text);font-size:13px;line-height:1.7}
+h1{font-size:24px;font-weight:700;letter-spacing:-.3px;margin:6px 0 6px;color:var(--ink)}
+h2{font-size:16px;font-weight:700;margin:0 0 4px;color:var(--ink)}
+h3,.sub-heading{font-size:14px;font-weight:700}
+.eyebrow{font-size:11px;letter-spacing:.6px;color:var(--muted);font-weight:600;text-transform:uppercase}
+.intro{margin-bottom:20px}
+.intro p{margin:0}
+
+/* Top bar: thin, black, full width, logo left and account right */
+body:not(.public-page) header{position:fixed;top:0;left:0;right:0;height:var(--top);padding:0 20px 0 calc(var(--side-w) + 24px);background:var(--bar);border:0;color:#c9cdd1;z-index:20;font-size:12px}
+body:not(.public-page) #breadcrumb{color:#c9cdd1}
+body:not(.public-page) #account .secondary{background:transparent;color:#e6e8ea;border-color:#4a4f54}
+body:not(.public-page) #account .secondary:hover{border-color:var(--orange);color:#fff}
+body:not(.public-page) #account summary{color:#fff}
+body:not(.public-page) #account .pill{background:#33373b;color:#e6e8ea;border:0}
+body:not(.public-page) #account .pill.admin{background:var(--orange);color:#fff}
+body:not(.public-page) #account .pill::before{display:none}
+body:not(.public-page) .account-options{background:#fff;border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 6px 20px #0000001f}
+body:not(.public-page) .account-options button{color:var(--ink)}
+
+/* Sidebar: light grey under the bar, icons + labels */
+body:not(.public-page) aside{top:var(--top);z-index:21;width:var(--side-w);background:var(--side);border-right:1px solid var(--line);color:var(--text);padding:14px 10px}
+body:not(.public-page) aside .brand{position:fixed;top:0;left:0;height:var(--top);width:var(--side-w);padding:0 18px;z-index:21;color:#fff;font-size:16px;gap:10px}
+body:not(.public-page) aside .brand img{width:30px;height:30px;border-radius:6px}
+body:not(.public-page) aside .brand b{color:var(--orange);font-size:13px;font-weight:700}
+body:not(.public-page) aside .brand small{display:none}
+body:not(.public-page) .nav-label{margin:6px 12px 8px;font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.4px;text-transform:uppercase}
+body:not(.public-page) nav button{padding:9px 12px;margin:2px 0;border-radius:var(--radius);color:var(--text);font-size:13px;font-weight:500;gap:10px}
+body:not(.public-page) nav button:hover{background:#eef0f2;color:var(--ink)}
+body:not(.public-page) nav button.active{background:#fff;color:var(--ink);font-weight:650;box-shadow:inset 3px 0 0 var(--orange),0 0 0 1px var(--line)}
+body:not(.public-page) .nav-icon{color:var(--muted)}
+body:not(.public-page) nav button.active .nav-icon{color:var(--orange)}
+.nav-count{background:var(--orange);color:#fff;border-radius:10px;font-size:11px;font-weight:700;padding:1px 7px}
+body:not(.public-page) .sidebar-bottom{color:var(--muted);font-size:11px}
+body:not(.public-page) .sidebar-bottom small{color:var(--muted)}
+.status-dot{background:var(--green)}
+
+/* Workspace */
+body:not(.public-page) .workspace{margin-left:var(--side-w);width:calc(100% - var(--side-w));padding-top:var(--top)}
+main{padding:28px 32px}
+footer{border-top:1px solid var(--line);color:var(--muted);background:transparent}
+
+/* Cards and panels: flat, small radius, grey border, no shadow */
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:none;padding:20px 22px}
+.cards{gap:14px;margin-bottom:18px}
+.stat{padding:16px 18px}
+.stat h2{font-size:12px;font-weight:600;color:var(--muted);text-transform:none;margin:0}
+.stat .value{font-size:30px;font-weight:700;color:var(--ink);margin:8px 0 4px;letter-spacing:-.5px}
+.stat p{font-size:12px;color:var(--muted);margin:0}
+.stat .primary,.stat .secondary{margin-top:10px}
+.stat.highlight{background:var(--panel);border-color:var(--line);box-shadow:inset 0 3px 0 var(--yellow)}
+.section-heading{margin-bottom:14px}
+.section-heading p{font-size:12px;color:var(--muted)}
+
+/* Buttons: orange filled and grey outline only */
+.primary{background:var(--orange);color:#fff;border:1px solid var(--orange);border-radius:var(--radius);padding:8px 14px;font-size:13px;font-weight:600}
+.primary:hover{background:var(--orange-dark);border-color:var(--orange-dark)}
+.secondary{background:#fff;border:1px solid var(--line-strong);border-radius:var(--radius);padding:7px 12px;font-size:12px;color:var(--ink);font-weight:500}
+.secondary:hover{border-color:var(--ink);color:var(--ink)}
+button:focus-visible,a:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+
+/* Inputs */
+input,select,textarea{border:1px solid var(--line-strong);border-radius:var(--radius);background:#fff;color:var(--ink)}
+input{height:38px}
+input:focus,select:focus,textarea:focus{outline:2px solid #f3802040;border-color:var(--orange)}
+label{font-size:12px;color:var(--text);font-weight:600}
+
+/* Dense tables */
+.table-wrap{border:1px solid var(--line);border-radius:var(--radius)}
+table{font-size:13px}
+th{background:#f7f8f9;color:var(--muted);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid var(--line)}
+td,th{padding:9px 12px;border-bottom:1px solid #eef0f2}
+tbody tr:hover td{background:#fafbfc}
+tbody tr:last-child td{border-bottom:0}
+td small{color:var(--muted);font-size:11px}
+
+/* Status labels: neutral text with a coloured dot */
+.pill{background:transparent;color:var(--text);border:1px solid var(--line);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.pill::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--green)}
+.pill.gray::before{background:#a8aeb5}
+.pill.gray{color:var(--muted)}
+.pill.admin::before{background:var(--orange)}
+.pill.status-confirmed{background:transparent;color:var(--text)}
+.pill.status-confirmed::before{background:var(--green)}
+.pill.status-review{background:transparent;color:var(--text)}
+.pill.status-review::before{background:var(--orange)}
+.pill.status-pending{background:var(--yellow-soft);color:#7a5a00;border-color:#f6dc8c}
+.pill.status-pending::before{background:var(--yellow)}
+.pill.wrong::before{background:var(--red)}
+
+/* Progress bars */
+.rate-track,.grading-bar{background:#eceef1;border-radius:3px;height:6px}
+.rate-fill{background:var(--orange);border-radius:3px}
+.g-confirmed{background:var(--green)}.g-review{background:var(--orange)}.g-pending{background:var(--yellow)}
+
+/* Loading bar sits under the top bar */
+body.is-loading header::after{top:var(--top);height:2px;background:var(--orange)}
+main.busy{opacity:.6}
+
+/* Misc */
+#toast{background:var(--ink);border-radius:var(--radius)}
+.tabs button.selected{border-color:var(--orange);color:var(--ink)}
+.empty,.loading{color:var(--muted)}
+.next-card,.hero{background:#fff;border-color:var(--line)}
+
+/* Public pages keep the light header; only the accents change */
+body.public-page header{background:#fff;border-bottom:1px solid var(--line)}
+body.public-page .landing-hero em{color:var(--orange)}
+body.public-page .learning-preview{background:#fff;border-color:var(--line)}
+
+@media(max-width:1000px){:root{--side-w:190px}}
+@media(max-width:740px){
+ body:not(.public-page) header{position:static;padding:0 16px;height:52px}
+ body:not(.public-page) aside{position:relative;top:0;width:100%;border-right:0;border-bottom:1px solid var(--line)}
+ body:not(.public-page) aside .brand{position:static;width:auto;height:auto;padding:4px 6px;color:var(--ink)}
+ body:not(.public-page) .workspace{margin-left:0;width:100%;padding-top:0}
+ main{padding:20px 16px}
+}
