@@ -5,7 +5,7 @@ import {assessmentAPI} from './assessment.mjs';
 import {settingsAPI} from './ai.mjs';
 import {resultsAPI} from './results.mjs';
 import {instructorAPI} from './instructor.mjs';
-import {adminOverviewAPI,adminScheduleAPI} from './admin.mjs';
+import {adminOverviewAPI,scheduleAPI} from './admin.mjs';
 import { randomBytes, randomUUID, timingSafeEqual, createHash, scrypt as scryptCallback } from 'node:crypto';
 import { promisify } from 'node:util';
 const scrypt = promisify(scryptCallback);
@@ -105,7 +105,7 @@ export function createHandler(db) {
    if(path==='/instructor/images')return await imagesAPI({method,body,session,query,response,fail});
    if(path==='/student/learning-path'||path==='/student/class-stats'||/^\/instructor\/(learning-path\/[^/]+|courses\/[^/]+\/modules)$/.test(path))return await pathAPI({path,method,body,session,query,response,fail});
    if(/^\/(instructor|student)\/guidance(?:\/generate|\/prompts)?$/.test(path))return await guidanceAPI({path,method,body,session,query,response,fail});
-   if(path==='/admin/schedule') return await adminScheduleAPI({method,session,query,response,fail});
+   if(/^\/(admin|instructor|student)\/schedule$/.test(path)) return await scheduleAPI({path,method,session,query,response,fail});
    if(path==='/admin/overview') return await adminOverviewAPI({method,session,query,response,fail});
    if(path.startsWith('/admin/ai')) return await settingsAPI({path,method,body,session,query,response,fail});
    if(/^\/(instructor|student)\/assessments(?:\/|$)/.test(path)&&!(path==='/instructor/assessments')) return await assessmentAPI({path,method,body,session,query,response,fail});
@@ -135,11 +135,20 @@ export function createHandler(db) {
     }
     if(path==='/admin/users' && method==='GET') {
      const search=(url.searchParams.get('q')||'').slice(0,80);
+     const role=['student','instructor','admin'].includes(url.searchParams.get('role'))?url.searchParams.get('role'):'';
+     const status=['active','inactive'].includes(url.searchParams.get('status'))?url.searchParams.get('status'):'';
      const page=Math.max(1,Math.min(100000,parseInt(url.searchParams.get('page')||'1',10)||1));
-     const params=['%'+search+'%'];
-     const total=Number((await query('SELECT count(*) AS count FROM app_users WHERE name LIKE $1 OR email LIKE $1',params)).rows[0].count);
-     const users=(await query('SELECT id,name,email,role,active,created_at FROM app_users WHERE name LIKE $1 OR email LIKE $1 ORDER BY created_at DESC,id LIMIT 10 OFFSET $2',[...params,(page-1)*10])).rows;
-     return response({users,total,page});
+     const params=['%'+search+'%'];let where='(u.name LIKE $1 OR u.email LIKE $1)';
+     if(role){params.push(role);where+=' AND u.role=$2';}
+     if(status)where+=status==='active'?' AND u.active=1':' AND u.active=0';
+     const total=Number((await query(`SELECT count(*) AS count FROM app_users u WHERE ${where}`,params)).rows[0].count);
+     const users=(await query(`SELECT u.id,u.name,u.email,u.role,u.active,u.created_at,
+      (SELECT max(s.created_at) FROM app_sessions s WHERE s.user_id=u.id) AS last_login,
+      CASE WHEN u.role='student' THEN (SELECT count(*) FROM courses c, json_each(c.student_ids) j WHERE j.value=u.id AND c.deleted_at IS NULL)
+       ELSE (SELECT count(*) FROM courses c WHERE c.owner_id=u.id AND c.deleted_at IS NULL) END AS courses
+      FROM app_users u WHERE ${where} ORDER BY u.created_at DESC,u.id LIMIT 10 OFFSET ${(page-1)*10}`,params)).rows;
+     const counts=(await query(`SELECT count(*) AS total,coalesce(sum(role='student'),0) AS students,coalesce(sum(role='instructor'),0) AS instructors,coalesce(sum(role='admin'),0) AS admins,coalesce(sum(active=0),0) AS inactive,coalesce(sum(created_at>=strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 days')),0) AS recent FROM app_users`)).rows[0];
+     return response({users,total,page,counts});
     }
     const match=path.match(/^\/admin\/users\/([a-f0-9-]{36})$/);
     if(match && method==='PATCH') {

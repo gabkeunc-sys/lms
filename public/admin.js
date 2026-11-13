@@ -44,11 +44,18 @@ async function renderAdminDashboard() {
 
 // 운영 일정: every course on one horizontally scrolling calendar, as Gantt bars with a line for today.
 let scheduleZoom = 'week';
-async function renderAdminSchedule() {
+const SCHEDULE_SCOPES = {
+ admin: {api: '/admin/schedule', eyebrow: 'ADMIN CONSOLE', title: '운영 일정', intro: '전체 과정의 운영 기간을 한눈에 봅니다.', empty: '등록된 과정이 없습니다.'},
+ instructor: {api: '/instructor/schedule', eyebrow: 'TEACHING SCHEDULE', title: '강의 일정', intro: '내가 맡은 과정의 운영 기간을 한눈에 봅니다.', empty: '맡은 과정이 없습니다.'},
+ student: {api: '/student/schedule', eyebrow: 'MY SCHEDULE', title: '학습 일정', intro: '내가 수강하는 과정의 기간과 시험 일정을 한눈에 봅니다.', empty: '수강 중인 과정이 없습니다.'},
+};
+function renderAdminSchedule() { return renderSchedule('admin'); }
+async function renderSchedule(scope) {
+ const S = SCHEDULE_SCOPES[scope];
  shell();
- startLoading('운영 일정을 불러오고 있습니다…');
+ startLoading(`${S.title}을 불러오고 있습니다…`);
  try {
-  const {courses} = await api('/admin/schedule');
+  const {courses} = await api(S.api);
   const DAY = 864e5, day = s => { const d = new Date(String(s).slice(0, 10) + 'T00:00:00'); return isNaN(d) ? null : d; };
   const now = new Date(), today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const dated = courses.filter(c => day(c.start_date) && day(c.end_date));
@@ -84,13 +91,13 @@ async function renderAdminSchedule() {
     const exams = c.assessments.map(a => { const d = day(a.opens_at) || weekOf(a.week); return `<span class="sc-exam ${a.kind}${a.published ? '' : ' draft'}" data-left="${x(d) - left + Math.min(px, 14) / 2}" title="${a.week}주차 ${a.kind === 'exam' ? '시험' : '미니퀴즈'} · ${escape(a.title)} (${fmtD(d)})"></span>`; }).join('');
     bar = `<div class="sc-bar ${st}" data-left="${left}" data-width="${w}" title="${escape(c.title)} · ${escape(c.start_date)} ~ ${escape(c.end_date)}"><div class="sc-bar-fill" data-width-pct="${doneRatio}"></div><span class="sc-bar-label">${escape(c.title)}${st === 'live' ? ` · ${doneRatio}%` : ''}</span>${modules}${exams}</div>`;
    }
-   return {side: `<div class="sc-row-head"><span class="sc-dot ${st}"></span><div><strong>${escape(c.title)}</strong><small>${escape(c.owner_name)} 강사 · 수강생 ${c.enrolled}명</small><small class="sc-period">${s && e ? `${escape(c.start_date.slice(0, 10).replaceAll('-', '.'))} ~ ${escape(c.end_date.slice(0, 10).replaceAll('-', '.'))}` : '기간 미정'}</small></div><span class="sc-state ${st}">${labels[st]}</span></div>`, track: `<div class="sc-row">${bar}</div>`};
+   return {side: `<div class="sc-row-head"><span class="sc-dot ${st}"></span><div><strong>${escape(c.title)}</strong><small>${escape(c.owner_name)} 강사${scope === 'student' ? '' : ` · 수강생 ${c.enrolled}명`}</small><small class="sc-period">${s && e ? `${escape(c.start_date.slice(0, 10).replaceAll('-', '.'))} ~ ${escape(c.end_date.slice(0, 10).replaceAll('-', '.'))}` : '기간 미정'}</small></div><span class="sc-state ${st}">${labels[st]}</span></div>`, track: `<div class="sc-row">${bar}</div>`};
   });
   const todayX = x(today) + px / 2;
-  $('#main').innerHTML = `<section class="intro"><span class="eyebrow">ADMIN CONSOLE</span><h1>운영 일정</h1><p>전체 과정의 운영 기간을 한눈에 봅니다. 막대는 과정 기간, 세로선은 오늘, 마름모는 시험·미니퀴즈입니다.</p></section>
+  $('#main').innerHTML = `<section class="intro"><span class="eyebrow">${S.eyebrow}</span><h1>${S.title}</h1><p>${S.intro} 막대는 과정 기간, 세로선은 오늘, 마름모는 시험·미니퀴즈입니다.</p></section>
   <div class="g-kpis sc-kpis"><div class="g-kpi"><span>진행 중</span><strong>${counts.live}</strong></div><div class="g-kpi"><span>예정</span><strong>${counts.soon}</strong></div><div class="g-kpi"><span>종료</span><strong>${counts.done}</strong></div><div class="g-kpi"><span>오늘</span><strong class="sc-today-kpi">${today.getFullYear()}.${fmtD(today)}</strong></div></div>
   <section class="panel sc-panel"><div class="sc-toolbar"><div class="sc-legend"><span><i class="sc-dot live"></i>진행 중</span><span><i class="sc-dot soon"></i>예정</span><span><i class="sc-dot done"></i>종료</span><span><i class="sc-exam exam inline"></i>시험</span><span><i class="sc-exam quiz inline"></i>미니퀴즈</span><span><i class="sc-mod inline"></i>주차 모듈</span><span><i class="sc-today-mark"></i>오늘</span></div><div class="sc-actions"><div class="tabs subtabs inline sc-zoom">${[['day', '일'], ['week', '주'], ['month', '월']].map(([k, l]) => `<button type="button" data-zoom="${k}" class="${k === scheduleZoom ? 'selected' : ''}">${l}</button>`).join('')}</div><button type="button" class="secondary" id="sc-today">오늘로 이동</button></div></div>
-  ${courses.length ? `<div class="sc-wrap"><div class="sc-side"><div class="sc-side-head">과정 · 강사</div>${rows.map(r => r.side).join('')}</div><div class="sc-scroll" id="sc-scroll"><div class="sc-canvas" data-width="${width}"><div class="sc-head"><div class="sc-months">${months}</div><div class="sc-ticks">${ticks}</div></div><div class="sc-body">${grid}${rows.map(r => r.track).join('')}<div class="sc-today" data-left="${todayX}"><span>오늘 ${fmtD(today)}</span></div></div></div></div></div>` : '<p class="empty">등록된 과정이 없습니다.</p>'}</section>`;
+  ${courses.length ? `<div class="sc-wrap"><div class="sc-side"><div class="sc-side-head">과정 · 강사</div>${rows.map(r => r.side).join('')}</div><div class="sc-scroll" id="sc-scroll"><div class="sc-canvas" data-width="${width}"><div class="sc-head"><div class="sc-months">${months}</div><div class="sc-ticks">${ticks}</div></div><div class="sc-body">${grid}${rows.map(r => r.track).join('')}<div class="sc-today" data-left="${todayX}"><span>오늘 ${fmtD(today)}</span></div></div></div></div></div>` : `<p class="empty">${S.empty}</p>`}</section>`;
   // Positions are applied through the CSSOM (no inline style attributes).
   $('#main').querySelectorAll('[data-left]').forEach(el => el.style.left = el.dataset.left + 'px');
   $('#main').querySelectorAll('[data-width]').forEach(el => el.style.width = el.dataset.width + 'px');
@@ -99,6 +106,6 @@ async function renderAdminSchedule() {
   const toToday = smooth => scroller && scroller.scrollTo({left: Math.max(0, todayX - scroller.clientWidth / 2), behavior: smooth ? 'smooth' : 'auto'});
   toToday(false);
   $('#sc-today')?.addEventListener('click', () => toToday(true));
-  $('#main').querySelectorAll('[data-zoom]').forEach(b => b.addEventListener('click', () => { scheduleZoom = b.dataset.zoom; renderAdminSchedule(); }));
+  $('#main').querySelectorAll('[data-zoom]').forEach(b => b.addEventListener('click', () => { scheduleZoom = b.dataset.zoom; renderSchedule(scope); }));
  } catch (e) { $('#main').innerHTML = `<p class="error">${escape(e.message)}</p>`; }
 }

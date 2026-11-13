@@ -58,14 +58,21 @@ export async function adminOverviewAPI({method, session, query, response, fail})
  return response({summary, instructors, courses, students, assessments});
 }
 
-// Admin operations schedule: every course's period with its weekly modules and assessments, for a Gantt timeline.
-export async function adminScheduleAPI({method, session, query, response, fail}) {
+// Operations schedule for a Gantt timeline: admins see every course, instructors the courses they teach,
+// students the courses they are enrolled in (published assessments only).
+export async function scheduleAPI({path, method, session, query, response, fail}) {
  if (!session) return fail('로그인이 필요합니다.', 401);
- if (session.role !== 'admin') return fail('관리자만 접근할 수 있습니다.', 403);
  if (method !== 'GET') return fail('허용되지 않는 요청입니다.', 405);
+ const scope = path.split('/')[1];
+ if (scope === 'admin' && session.role !== 'admin') return fail('관리자만 접근할 수 있습니다.', 403);
+ if (scope === 'instructor' && !['admin', 'instructor'].includes(session.role)) return fail('강사만 접근할 수 있습니다.', 403);
+ const where = scope === 'admin' ? '' : scope === 'instructor' ? ' AND c.owner_id=$1' : ' AND EXISTS(SELECT 1 FROM json_each(c.student_ids) j WHERE j.value=$1)';
+ const params = scope === 'admin' ? [] : [session.id];
  const courses = (await query(`SELECT c.id,c.title,c.status,c.start_date,c.end_date,u.name AS owner_name,json_array_length(c.student_ids) AS enrolled
-  FROM courses c JOIN app_users u ON u.id=c.owner_id WHERE c.deleted_at IS NULL ORDER BY coalesce(c.start_date,'9999'),c.title`)).rows;
- const modules = (await query(`SELECT m.course_id,m.week,m.title FROM course_modules m JOIN courses c ON c.id=m.course_id WHERE c.deleted_at IS NULL ORDER BY m.week`)).rows;
- const assessments = (await query(`SELECT a.course_id,a.title,a.kind,a.week,a.opens_at,a.closes_at,a.published FROM assessments a JOIN courses c ON c.id=a.course_id WHERE c.deleted_at IS NULL ORDER BY a.week`)).rows;
+  FROM courses c JOIN app_users u ON u.id=c.owner_id WHERE c.deleted_at IS NULL${where} ORDER BY coalesce(c.start_date,'9999'),c.title`, params)).rows;
+ const ids = new Set(courses.map(c => c.id));
+ const modules = (await query(`SELECT course_id,week,title FROM course_modules ORDER BY week`)).rows.filter(m => ids.has(m.course_id));
+ const assessments = (await query(`SELECT course_id,title,kind,week,opens_at,closes_at,published FROM assessments ORDER BY week`)).rows
+  .filter(a => ids.has(a.course_id) && (scope !== 'student' || a.published));
  return response({courses: courses.map(c => ({...c, modules: modules.filter(m => m.course_id === c.id).map(({week, title}) => ({week, title})), assessments: assessments.filter(a => a.course_id === c.id).map(({course_id, ...a}) => a)}))});
 }
