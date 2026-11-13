@@ -22,6 +22,7 @@ async function buildPaths(query,studentId,ownerId=null){
 
 export async function pathAPI({path,method,body,session,query,response,fail}){
  if(!session)return fail('로그인이 필요합니다.',401);
+ if(path==='/student/class-stats'){if(method!=='GET')return fail('허용되지 않는 요청입니다.',405);return response(await classStats(query,session.id));}
  if(path==='/student/learning-path'){
   if(method!=='GET')return fail('허용되지 않는 요청입니다.',405);
   return response({paths:await buildPaths(query,session.id)});
@@ -51,4 +52,28 @@ export async function pathAPI({path,method,body,session,query,response,fail}){
  await query('DELETE FROM course_modules WHERE course_id=$1',[course.id]);
  for(const x of mods)await query('INSERT INTO course_modules(id,course_id,week,title,description) VALUES($1,$2,$3,$4,$5)',[typeof x.id==='string'&&UUID.test(x.id)?x.id:randomUUID(),course.id,x.week,x.title.trim(),(x.description||'').trim()]);
  return response({ok:true,...await list()});
+}
+
+// Class comparison for the student dashboard: class averages, anonymised classmate points and concept rates.
+export async function classStats(query,studentId){
+ const rows=(await query(`SELECT r.assessment_id,r.student_id,r.score,r.total,r.duration_seconds,r.questions,r.answers,r.grading,a.title,a.week,a.kind FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id JOIN courses c ON c.id=a.course_id WHERE c.deleted_at IS NULL AND r.grading_status='confirmed' AND r.total>0 AND EXISTS(SELECT 1 FROM json_each(c.student_ids) WHERE value=$1) AND a.id IN (SELECT assessment_id FROM assessment_results WHERE student_id=$1)`,[studentId])).rows;
+ const byA=new Map(),concepts=new Map(),types={choice:{e:0,t:0},text:{e:0,t:0}},points=[];
+ for(const r of rows){
+  const pct=100*r.score/r.total,me=r.student_id===studentId;
+  const a=byA.get(r.assessment_id)||{assessment_id:r.assessment_id,title:r.title,week:r.week,kind:r.kind,sum:0,n:0};a.sum+=pct;a.n++;byA.set(r.assessment_id,a);
+  points.push({assessment_id:r.assessment_id,title:r.title,percent:Math.round(pct*10)/10,minutes:Math.round(r.duration_seconds/6)/10,me});
+  if(me)continue;
+  for(const [i,q] of (r.questions||[]).entries()){
+   const total=Number(q.points);if(!(total>0))continue;const kind=q.type==='text'?'text':'choice';
+   const earned=kind==='text'?Number(r.grading?.[i]?.score):(r.answers?.[i]===q.answer?total:0);if(!Number.isFinite(earned))continue;
+   const tag=q.tag?.trim()||'미분류',c=concepts.get(tag)||{e:0,t:0};c.e+=Math.max(0,Math.min(total,earned));c.t+=total;concepts.set(tag,c);
+   types[kind].e+=Math.max(0,Math.min(total,earned));types[kind].t+=total;
+  }
+ }
+ return {
+  assessments:[...byA.values()].map(a=>({assessment_id:a.assessment_id,title:a.title,week:a.week,kind:a.kind,class_average:Math.round(a.sum/a.n*10)/10,takers:a.n})),
+  points,
+  concepts:Object.fromEntries([...concepts].map(([k,v])=>[k,Math.round(1000*v.e/v.t)/10])),
+  types:Object.fromEntries(Object.entries(types).filter(([,v])=>v.t>0).map(([k,v])=>[k,Math.round(1000*v.e/v.t)/10]))
+ };
 }
