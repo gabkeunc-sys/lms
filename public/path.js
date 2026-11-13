@@ -38,7 +38,7 @@ function renderLearningPath(container,paths,{title=true}={}){
   const allDone=s.steps.length&&s.done===s.steps.length;
   return `<div class="lp-course" data-path="${pi}">${title?`<div class="lp-head"><h3>${courseName(p)}</h3><span class="lp-progress">${s.done} / ${s.steps.length} 단계 완료${s.expected!=null?` · 최근 평균 ${s.expected}점`:''}</span></div>`:''}
   <div class="lp-track"><div class="lp-row"><div class="lp-step lp-cap lp-done" data-cap="start"><span class="lp-week"><span class="lp-dot dot-green"></span>시작</span><span class="lp-title">과정 시작</span><span class="lp-meta">${lpDate(p.course_start)||'일정 미정'}</span></div>${s.steps.map(box).join('')}<div class="lp-step lp-cap ${allDone?'lp-done':'lp-plan'}${s.steps.length%2?'':' lp-down'}" data-cap="end"><span class="lp-week"><span class="lp-dot ${allDone?'dot-green':'dot-gray'}"></span>목표</span><span class="lp-title">과정 수료</span><span class="lp-meta">${lpDate(p.course_end)||'일정 미정'}</span></div></div></div>
-  <div class="lp-legend"><span><i class="lp-line solid"></i>지나온 경로</span><span><i class="lp-line dashed"></i>예상 경로</span><span><span class="lp-dot dot-orange-ring"></span>다음 단계</span><span><span class="lp-retake static">재응시</span>다시 응시한 단계</span></div>
+  <div class="lp-legend"><span><i class="lp-line solid"></i>지나온 경로</span><span><i class="lp-line dashed"></i>예측 경로</span><span><span class="lp-dot dot-orange-ring"></span>다음 단계</span><span><span class="lp-retake static">재응시</span>다시 응시한 단계</span></div>
   <div class="lp-detail" hidden></div></div>`;
  }).join('');
  container.querySelectorAll('.lp-course').forEach(el=>{
@@ -114,7 +114,7 @@ async function renderModuleEditor(course){
 async function renderStudentPath(){
  shell();startLoading('러닝 패스를 불러오고 있습니다…');
  try{const {paths}=await api('/student/learning-path');if(view!=='path')return;
-  $('#main').innerHTML=`<section class="intro"><span class="eyebrow">LEARNING PATH</span><h1>러닝 패스</h1><p>강사가 설계한 주차별 모듈을 따라 지나온 경로는 실선, 앞으로의 예상 경로는 점선으로 표시합니다. 단계를 누르면 자세히 볼 수 있습니다.</p></section>${paths.length>1?`<section class="dashboard-toolbar"><div><label for="path-course">과정</label><select id="path-course"><option value="">전체 과정</option>${paths.map(p=>`<option value="${p.course_id}">${courseName(p)}</option>`).join('')}</select></div></section>`:''}<section class="panel learning-path-panel"><div id="learning-path"></div></section>`;
+  $('#main').innerHTML=`<section class="intro"><span class="eyebrow">LEARNING PATH</span><h1>러닝 패스 ${AI_MARK}</h1><p>학습자의 학습 경로는 강사님이 설계한 주차별 커리큘럼과 AI의 예측을 바탕으로 최적의 경로를 제시합니다. 실선은 지나온 경로, 점선은 앞으로 나아갈 예측 경로입니다.</p></section>${paths.length>1?`<section class="dashboard-toolbar"><div><label for="path-course">과정</label><select id="path-course"><option value="">전체 과정</option>${paths.map(p=>`<option value="${p.course_id}">${courseName(p)}</option>`).join('')}</select></div></section>`:''}<section class="panel learning-path-panel"><div id="learning-path"></div></section>`;
   const draw=()=>{const c=$('#path-course')?.value;renderLearningPath($('#learning-path'),paths.filter(p=>!c||p.course_id===c));};
   if($('#path-course'))$('#path-course').onchange=draw;draw();
  }catch(e){if(view==='path')$('#main').innerHTML=`<section class="panel"><p>${escape(e.message)}</p></section>`;}
