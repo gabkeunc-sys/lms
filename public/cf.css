@@ -899,3 +899,4 @@ b.op-good{color:#23845a!important}b.op-warn{color:#a77400!important}b.op-bad{col
 @media (max-width:760px){.mt-split,.mt-learn{grid-template-columns:1fr}}
 .mt-check input,.mt-acts input{height:auto;width:16px;flex:none}.mt-checks{padding-bottom:6px}.mt-acts label{font-size:13px;font-weight:400}
 @media (min-width:1200px){.g-kpis.op-kpis:has(> :nth-child(5)):not(:has(> :nth-child(6))){grid-template-columns:repeat(5,minmax(0,1fr))}}
+.mt-acts li label{margin:0;padding:0;min-height:0;line-height:1.5}.mt-acts li{padding:4px 0}.op-dialog .mt-check{display:flex;margin:0}
