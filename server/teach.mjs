@@ -3,6 +3,7 @@
 import {randomUUID} from 'node:crypto';
 import {generateQuestion} from './ai.mjs';
 import {computeRisk, logActivity, meteredAI} from './ops.mjs';
+import {meetingStats} from './meetings.mjs';
 
 const UUID = /^[a-f0-9-]{36}$/;
 const NOWSQL = "strftime('%Y-%m-%dT%H:%M:%fZ','now')";
@@ -302,8 +303,9 @@ export async function teachAPI({path, method, body, session, query, response, fa
   const results = (await query(`SELECT r.id,r.score,r.total,r.grading_status,r.submitted_at,r.questions,r.answers,r.grading,a.id AS assessment_id,a.title,a.week,a.kind,a.course_id,(SELECT round(avg(x.score*100.0/x.total),1) FROM assessment_results x WHERE x.assessment_id=a.id AND x.grading_status='confirmed') AS class_avg FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id WHERE r.student_id=$1 AND a.course_id IN (${ph}) ORDER BY r.submitted_at`, [m[1], ...ids])).rows;
   const guidance = (await query(`SELECT course_id,content,published,updated_at FROM learning_guidance WHERE student_id=$1 AND course_id IN (${ph})`, [m[1], ...ids])).rows;
   const notes = (await query(`SELECT n.id,n.course_id,n.kind,n.body,n.created_at,u.name AS author_name FROM student_notes n JOIN app_users u ON u.id=n.author_id WHERE n.student_id=$1 AND (n.course_id IS NULL OR n.course_id IN (${ph})) ORDER BY n.created_at DESC`, [m[1], ...ids])).rows;
+  const meetings = (await query(`SELECT m.*,u.name AS instructor_name FROM meetings m JOIN app_users u ON u.id=m.instructor_id WHERE m.student_id=$1 AND m.course_id IN (${ph}) ORDER BY coalesce(m.held_at,m.scheduled_at,m.preferred_at,m.created_at) DESC`, [m[1], ...ids])).rows.map(x => ({...x, actions: j(x.actions)}));
   const risk = (await computeRisk(query, session.role === 'admin' ? null : session.id)).students.filter(s => s.student_id === m[1]);
-  return response({student, courses, results: results.map(r => ({...r, questions: j(r.questions), answers: j(r.answers), grading: j(r.grading)})), guidance, notes, risk});
+  return response({student, courses, meetings, results: results.map(r => ({...r, questions: j(r.questions), answers: j(r.answers), grading: j(r.grading)})), guidance, notes, risk});
  }
  if (path === '/instructor/notes' && method === 'POST') {
   const text = typeof body.body === 'string' ? body.body.trim() : '';
@@ -321,9 +323,9 @@ export async function teachAPI({path, method, body, session, query, response, fa
   const risk = await computeRisk(query, session.role === 'admin' ? null : session.id);
   const alerts = (await query("SELECT id,title,body,created_at,read_at FROM notifications WHERE user_id=$1 AND kind='risk' ORDER BY created_at DESC LIMIT 20", [session.id])).rows;
   const [where, params] = scope(session);
-  const counsel = (await query(`SELECT n.id,n.student_id,n.course_id,n.body,n.created_at,u.name AS student_name,c.title AS course_title FROM student_notes n JOIN app_users u ON u.id=n.student_id JOIN courses c ON c.id=n.course_id WHERE n.kind='counsel' AND ${where} ORDER BY n.created_at DESC LIMIT 30`, params)).rows;
-  const lastCounsel = new Map(); for (const n of counsel) { const k = n.student_id + ':' + n.course_id; if (!lastCounsel.has(k)) lastCounsel.set(k, n.created_at); }
-  return response({...risk, students: risk.students.map(s => ({...s, counseled_at: lastCounsel.get(s.student_id + ':' + s.course_id) || null})), alerts, counsel});
+  const counsel = (await query(`SELECT m.id,m.student_id,m.course_id,m.topic,m.kind,m.summary,m.private_note,coalesce(m.held_at,m.updated_at) AS created_at,u.name AS student_name,c.title AS course_title FROM meetings m JOIN app_users u ON u.id=m.student_id JOIN courses c ON c.id=m.course_id WHERE m.status='done' AND c.deleted_at IS NULL AND ${where} ORDER BY coalesce(m.held_at,m.updated_at) DESC LIMIT 30`, params)).rows;
+  const {last: lastCounsel, next: pendingMeet} = await meetingStats(query, session.role === 'admin' ? null : session.id);
+  return response({...risk, students: risk.students.map(s => ({...s, counseled_at: lastCounsel.get(s.student_id + ':' + s.course_id) || null, meeting_pending: pendingMeet.get(s.student_id + ':' + s.course_id) || null})), alerts, counsel});
  }
 
  // ---------- 과정 운영 도구 ----------

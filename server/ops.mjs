@@ -168,6 +168,11 @@ export async function opsAPI({path, method, body, session, query, response, fail
   const res = (await query(`SELECT c.owner_id,r.grading_status,r.submitted_at,r.confirmed_at,(SELECT count(*) FROM json_each(r.questions) q WHERE json_extract(q.value,'$.type')='text') AS text_q FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id JOIN courses c ON c.id=a.course_id WHERE c.deleted_at IS NULL`)).rows;
   const logs = (await query("SELECT actor_id,detail FROM activity_log WHERE action='grade.confirm'")).rows;
   const guide = (await query(`SELECT c.owner_id,count(DISTINCT r.student_id||a.course_id) AS learners,(SELECT count(*) FROM learning_guidance g JOIN courses c2 ON c2.id=g.course_id WHERE c2.owner_id=c.owner_id AND g.published=1) AS n_pub,(SELECT count(*) FROM learning_guidance g JOIN courses c2 ON c2.id=g.course_id WHERE c2.owner_id=c.owner_id AND g.published=0) AS n_draft FROM assessment_results r JOIN assessments a ON a.id=r.assessment_id JOIN courses c ON c.id=a.course_id WHERE c.deleted_at IS NULL GROUP BY c.owner_id`)).rows;
+  // Meetings: completed per instructor, and share of at-risk students (high/medium) counseled in the last 30 days.
+  const meets = (await query(`SELECT m.instructor_id,m.student_id,m.course_id,m.status,coalesce(m.held_at,m.updated_at) AS at,c.owner_id FROM meetings m JOIN courses c ON c.id=m.course_id WHERE c.deleted_at IS NULL`)).rows;
+  const riskAll = (await computeRisk(query, null)).students.filter(s => s.level !== 'low');
+  const since = new Date(Date.now() - 30 * 864e5).toISOString();
+  const counseled = new Set(meets.filter(x => x.status === 'done' && x.at >= since).map(x => x.student_id + ':' + x.course_id));
   const now = Date.now();
   const list = instructors.map(i => {
    const mine = res.filter(r => r.owner_id === i.id && r.text_q > 0);
@@ -179,7 +184,7 @@ export async function opsAPI({path, method, body, session, query, response, fail
    const used = ai.reduce((a, d) => a + d.ai_used, 0), changed = ai.reduce((a, d) => a + (d.ai_changed || 0), 0);
    const g = guide.find(x => x.owner_id === i.id) || {learners: 0, n_pub: 0, n_draft: 0};
    const median = delays.length ? delays.sort((a, b) => a - b)[Math.floor(delays.length / 2)] : null;
-   return {...i, graded: done.length, avg_delay_h: delays.length ? pct(delays.reduce((a, b) => a + b, 0) / delays.length) : null, median_delay_h: pct(median), within_24h: delays.length ? pct(delays.filter(h => h <= 24).length * 100 / delays.length) : null, waiting: waiting.length, oldest_wait_h: pct(oldest), ai_used: used, ai_edit_rate: used ? pct(changed * 100 / used) : null, learners: g.learners, guidance_published: Number(g.n_pub), guidance_drafts: Number(g.n_draft), guidance_rate: g.learners ? pct(Math.min(100, g.n_pub * 100 / g.learners)) : null};
+   return {...i, graded: done.length, avg_delay_h: delays.length ? pct(delays.reduce((a, b) => a + b, 0) / delays.length) : null, median_delay_h: pct(median), within_24h: delays.length ? pct(delays.filter(h => h <= 24).length * 100 / delays.length) : null, waiting: waiting.length, oldest_wait_h: pct(oldest), ai_used: used, ai_edit_rate: used ? pct(changed * 100 / used) : null, learners: g.learners, guidance_published: Number(g.n_pub), guidance_drafts: Number(g.n_draft), guidance_rate: g.learners ? pct(Math.min(100, g.n_pub * 100 / g.learners)) : null, ...(() => { const mm = meets.filter(x => x.owner_id === i.id), rk = riskAll.filter(r => r.owner_id === i.id), ok = rk.filter(r => counseled.has(r.student_id + ':' + r.course_id)).length; return {meetings_done: mm.filter(x => x.status === 'done').length, meetings_month: mm.filter(x => x.status === 'done' && x.at >= since).length, meetings_waiting: mm.filter(x => x.status === 'requested').length, risk_students: rk.length, risk_counseled: ok, counsel_rate: rk.length ? pct(ok * 100 / rk.length) : null}; })()};
   });
   return response({instructors: list});
  }

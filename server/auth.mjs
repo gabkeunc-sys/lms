@@ -2,6 +2,7 @@ import {guidanceAPI} from './guidance.mjs';
 import {teachAPI} from './teach.mjs';
 import {learnAPI} from './learn.mjs';
 import {certsAPI} from './certs.mjs';
+import {meetingsAPI} from './meetings.mjs';
 import {pathAPI} from './path.mjs';
 import {imagesAPI} from './images.mjs';
 import {assessmentAPI} from './assessment.mjs';
@@ -116,6 +117,7 @@ export function createHandler(db) {
     return response({ok:true},200,{'Set-Cookie':`${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`});
    }
    if(path==='/instructor/images')return await imagesAPI({method,body,session,query,response,fail});
+   if(/^\/(student|instructor)\/meetings(\/|$)/.test(path))return await meetingsAPI({path,method,body,session,query,response,fail});
    if(/^\/certificates\/verify\//.test(path)||/^\/(student|instructor|admin)\/certificates(\/|$)/.test(path))return await certsAPI({path,method,body,session,query,response,fail});
    if(/^\/student\/(today|wrong-notes|retry|practice|feedback|appeals|achievements|goal)(\/|$)/.test(path)||/^\/instructor\/appeals(\/|$)/.test(path))return await learnAPI({path,method,body,session,query,response,fail,url});
    if(/^\/instructor\/(today|grading|analysis|bank|roster|students\/[a-f0-9-]{36}\/detail|notes|risk|course-plan)(\/|$)/.test(path)||/^\/instructor\/courses\/[a-f0-9-]{36}\/duplicate$/.test(path))return await teachAPI({path,method,body,session,query,response,fail,url});

@@ -4,7 +4,7 @@ import {createTestDatabase} from './helpers/d1.mjs';
 import {createHandler} from '../server/auth.mjs';
 import {randomUUID} from 'node:crypto';
 test('instructor course ownership, role boundaries, assessment answers and persistence',async()=>{
- const db=await createTestDatabase({migrations:['0001_schema.sql','0007_operations.sql','0008_teaching_tools.sql','0009_learning_tools.sql','0010_certificates.sql','0011_english_names.sql','0012_bank_quality.sql']});try{
+ const db=await createTestDatabase({migrations:['0001_schema.sql','0007_operations.sql','0008_teaching_tools.sql','0009_learning_tools.sql','0010_certificates.sql','0011_english_names.sql','0012_bank_quality.sql','0013_meetings.sql']});try{
 const handler=createHandler(db);
  const call=(path,method='GET',body,cookie='')=>handler(new Request('https://lms.test/api'+path,{method,headers:{origin:'https://lms.test','content-type':'application/json',cookie},...(body?{body:JSON.stringify(body)}:{})}),{ip:randomUUID()});
  async function account(role,email){const a={name:role,email,password:'Password-test-2026'};await call('/register','POST',a);await db.query('UPDATE app_users SET role=$1 WHERE email=$2',[role,email]);const r=await call('/login','POST',a);return {cookie:r.headers.get('set-cookie').split(';')[0],user:(await r.json()).user};}

@@ -1,5 +1,5 @@
 let teacherCourses=[],teacherAssessments=[],examDraft=null,questionIndex=0;
-const teacherLabels={'teach-home':'오늘 할 일','teach-plan':'과정 운영','teach-bank':'문제 은행','teach-grading':'일괄 채점','teach-analysis':'문항 분석','teach-students':'학생 관리','teach-risk':'위험 학생','teach-appeals':'이의 신청','teach-certs':'수료증',courses:'내 과정',exams:'시험·미니퀴즈',results:'성적·채점','teach-guidance':'학습 방향 지도','teach-schedule':'강의 일정','teach-notices':'공지·알림'};
+const teacherLabels={'teach-home':'오늘 할 일','teach-plan':'과정 운영','teach-bank':'문제 은행','teach-grading':'일괄 채점','teach-analysis':'문항 분석','teach-students':'학생 관리','teach-risk':'위험 학생','teach-appeals':'이의 신청','teach-certs':'수료증','teach-meetings':'면담·상담일지',courses:'내 과정',exams:'시험·미니퀴즈',results:'성적·채점','teach-guidance':'학습 방향 지도','teach-schedule':'강의 일정','teach-notices':'공지·알림'};
 const roleLabel=role=>({admin:'관리자',instructor:'강사',student:'학생'}[role]||role);
 const gradingLabel=s=>({pending:'채점 대기',review:'AI 제안 검토 중',confirmed:'확정'}[s]||s);
 function teacherHomeLists(results){
@@ -21,6 +21,7 @@ async function teacherPage(){
  if(view==='teach-risk')return renderTeachRisk();
  if(view==='teach-appeals')return renderTeachAppeals();
  if(view==='teach-certs')return renderTeachCerts();
+ if(view==='teach-meetings')return renderTeachMeetings();
  if(view==='results')return renderResults(true);
  shell();startLoading('강사 공간을 불러오고 있습니다…');
  try{

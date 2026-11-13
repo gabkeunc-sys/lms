@@ -74,5 +74,7 @@ export async function scheduleAPI({path, method, session, query, response, fail}
  const modules = (await query(`SELECT course_id,week,title FROM course_modules ORDER BY week`)).rows.filter(m => ids.has(m.course_id));
  const assessments = (await query(`SELECT course_id,title,kind,week,opens_at,closes_at,published FROM assessments ORDER BY week`)).rows
   .filter(a => ids.has(a.course_id) && (scope !== 'student' || a.published));
- return response({courses: courses.map(c => ({...c, modules: modules.filter(m => m.course_id === c.id).map(({week, title}) => ({week, title})), assessments: assessments.filter(a => a.course_id === c.id).map(({course_id, ...a}) => a)}))});
+ // Meetings on the timeline: scheduled or held. Students see only their own.
+ const meets = (await query(`SELECT m.course_id,m.topic,m.status,coalesce(m.held_at,m.scheduled_at) AS at,u.name AS student_name FROM meetings m JOIN app_users u ON u.id=m.student_id WHERE m.status IN ('scheduled','done') AND coalesce(m.held_at,m.scheduled_at) IS NOT NULL${scope === 'student' ? ' AND m.student_id=$1' : ''}`, scope === 'student' ? [session.id] : [])).rows.filter(x => ids.has(x.course_id));
+ return response({courses: courses.map(c => ({...c, modules: modules.filter(m => m.course_id === c.id).map(({week, title}) => ({week, title})), assessments: assessments.filter(a => a.course_id === c.id).map(({course_id, ...a}) => a), meetings: meets.filter(x => x.course_id === c.id).map(({course_id, ...x}) => x)}))});
 }
