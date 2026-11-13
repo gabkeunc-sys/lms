@@ -21,7 +21,13 @@ function lpSummarize(path){
  steps.forEach((st,i)=>{if(i<lastActive&&st.state==='plan'){if(st.assessments.some(a=>a.published))st.missed=true;else{st.state='done';st.passed=true;}}});
  let nextMarked=false;
  for(const [i,st] of steps.entries()){if(st.state==='done'||i<lastActive)continue;if(!nextMarked&&st.state==='plan'||!nextMarked&&st.state==='progress'){st.next=true;nextMarked=true;}if(st.state==='plan')st.expected=expected;}
- return {steps,expected,done:steps.filter(s=>s.state==='done').length};
+ // Distance to the 3rd-year developer benchmark (an estimate): taken steps use the score, planned ones the expected score.
+ for(const st of steps){const b=st.benchmark,v=st.score!=null?st.score:st.state==='plan'&&!st.missed&&!st.passed?st.expected:null;st.gap=b!=null&&v!=null?Math.round((b-v)*10)/10:null;}
+ const scored=steps.filter(st=>st.score!=null&&st.benchmark!=null),benches=steps.filter(st=>st.benchmark!=null);
+ const avg=a=>a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length*10)/10:null;
+ const bench={me:avg(scored.map(st=>st.score)),target:avg(scored.map(st=>st.benchmark)),course:avg(benches.map(st=>st.benchmark)),reached:scored.filter(st=>st.score>=st.benchmark).length,taken:scored.length,steps:scored};
+ bench.gap=bench.me!=null&&bench.target!=null?Math.round((bench.target-bench.me)*10)/10:null;
+ return {steps,expected,bench,done:steps.filter(s=>s.state==='done').length};
 }
 function renderLearningPath(container,paths,{title=true}={}){
  if(!container)return;
@@ -33,17 +39,22 @@ function renderLearningPath(container,paths,{title=true}={}){
    const dot=st.state==='done'?(st.pending?'dot-orange':'dot-green'):st.state==='progress'?'dot-orange':st.next?'dot-orange-ring':'dot-gray';
    const value=st.passed?'<span class="lp-expected">평가 없음</span>':st.missed?'<strong class="lp-wait">미응시</strong>':st.state==='plan'?(st.expected!=null?`<span class="lp-expected">예상 ${st.expected}점</span>`:'<span class="lp-expected">예정</span>'):st.score!=null?`<strong>${st.score}점</strong>`:'<strong class="lp-wait">채점 중</strong>';
    const meta=st.passed?'지나온 주차':st.missed?'응시하지 않음':st.state==='plan'?(st.next?'다음 단계':(st.assessments.some(a=>a.published)?'응시 가능':'공개 예정')):st.state==='progress'?`진행 중 · ${lpDate(st.last)}`:lpDate(st.last);
-   return `<button type="button" class="${cls}" data-step="${i}">${st.retake?'<span class="lp-retake">재응시</span>':''}<span class="lp-week"><span class="lp-dot ${dot}"></span>${st.week}주차${st.assessments.length?` · 평가 ${st.assessments.length}`:''}</span><span class="lp-title">${escape(st.title)}</span><span class="lp-value">${value}</span><span class="lp-meta">${meta}</span></button>`;
+   return `<button type="button" class="${cls}" data-step="${i}">${st.retake?'<span class="lp-retake">재응시</span>':''}<span class="lp-week"><span class="lp-dot ${dot}"></span>${st.week}주차${st.assessments.length?` · 평가 ${st.assessments.length}`:''}</span><span class="lp-title">${escape(st.title)}</span><span class="lp-value">${value}</span><span class="lp-meta">${meta}</span>${st.benchmark!=null&&!st.passed?`<span class="lp-bench${st.gap!=null&&st.gap<=0?' reached':''}" title="현업 3년차 개발자 기준 (추정치)"><i></i>3년차 ${st.benchmark}점${st.gap==null?'':st.gap<=0?' · 도달':` · ${st.gap}점 남음`}</span>`:''}</button>`;
   };
+  const b=s.bench,benchCard=b.taken?`<div class="lp-bench-card"><div class="lp-bench-head"><div><span class="eyebrow">INDUSTRY BENCHMARK</span><h4>현업 3년차 개발자 기준과 나의 거리</h4><p>지금까지 응시한 ${b.taken}개 단계의 확정 점수를 현업 3년차 개발자가 받을 것으로 보는 점수와 비교합니다. 기준 점수는 추정치이며 실제 데이터가 쌓이면 갱신됩니다.</p></div><div class="lp-bench-big ${b.gap<=0?'reached':''}"><small>3년차 기준까지</small><strong>${b.gap<=0?'도달':b.gap+'점'}</strong><span>나 ${b.me}점 · 기준 ${b.target}점</span></div></div>
+   <div class="lp-bench-scale"><div class="lp-bench-track"><span class="lp-bench-me" data-pos="${b.me}"><b>나 ${b.me}</b></span><span class="lp-bench-target" data-pos="${b.target}"><b>3년차 ${b.target}</b></span></div></div>
+   <div class="lp-bench-rows">${b.steps.map(st=>`<div class="lp-bench-row"><span class="lp-bench-label">${st.week}주차 · ${escape(st.title)}</span><div class="lp-bench-bar"><span class="fill${st.score>=st.benchmark?' reached':''}" data-pos="${st.score}"></span><span class="mark" data-pos="${st.benchmark}"></span></div><span class="lp-bench-val">${st.score}<small> / ${st.benchmark}</small></span><span class="lp-bench-gap ${st.score>=st.benchmark?'reached':''}">${st.score>=st.benchmark?'도달':`-${Math.round((st.benchmark-st.score)*10)/10}`}</span></div>`).join('')}</div>
+   <div class="lp-bench-foot"><span>기준 도달 ${b.reached} / ${b.taken}단계</span><span>과정 전체 3년차 기준 평균 ${b.course}점</span><span class="muted">* 현업 3년차 기준은 예시 추정치입니다.</span></div></div>`:'';
   const allDone=s.steps.length&&s.done===s.steps.length;
   return `<div class="lp-course" data-path="${pi}">${title?`<div class="lp-head"><h3>${courseName(p)}</h3><span class="lp-progress">${s.done} / ${s.steps.length} 단계 완료${s.expected!=null?` · 최근 평균 ${s.expected}점`:''}</span></div>`:''}
   <div class="lp-track"><div class="lp-row"><div class="lp-step lp-cap lp-done" data-cap="start"><span class="lp-week"><span class="lp-dot dot-green"></span>시작</span><span class="lp-title">과정 시작</span><span class="lp-meta">${lpDate(p.course_start)||'일정 미정'}</span></div>${s.steps.map(box).join('')}<div class="lp-step lp-cap ${allDone?'lp-done':'lp-plan'}${s.steps.length%2?'':' lp-down'}" data-cap="end"><span class="lp-week"><span class="lp-dot ${allDone?'dot-green':'dot-gray'}"></span>목표</span><span class="lp-title">과정 수료</span><span class="lp-meta">${lpDate(p.course_end)||'일정 미정'}</span></div></div></div>
-  <div class="lp-legend"><span><i class="lp-line solid"></i>지나온 경로</span><span><i class="lp-line dashed"></i>예측 경로</span><span><span class="lp-dot dot-orange-ring"></span>다음 단계</span><span><span class="lp-retake static">재응시</span>다시 응시한 단계</span></div>
+  <div class="lp-legend"><span><i class="lp-line solid"></i>지나온 경로</span><span><i class="lp-line dashed"></i>예측 경로</span><span><span class="lp-dot dot-orange-ring"></span>다음 단계</span><span><span class="lp-retake static">재응시</span>다시 응시한 단계</span><span><i class="lp-bench-dot"></i>현업 3년차 기준 (추정)</span></div>${benchCard}
   <div class="lp-detail" hidden></div></div>`;
  }).join('');
  container.querySelectorAll('.lp-course').forEach(el=>{
   const p=paths[el.dataset.path];
   lpDraw(el,p._s);
+  el.querySelectorAll('.lp-bench-card [data-pos]').forEach(x=>{const v=Math.max(0,Math.min(100,Number(x.dataset.pos)));if(x.classList.contains('fill'))x.style.width=v+'%';else x.style.left=v+'%';});
   el.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{
    el.querySelectorAll('.lp-step.selected').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');
    const st=p._s.steps[b.dataset.step],d=el.querySelector('.lp-detail');d.hidden=false;

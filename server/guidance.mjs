@@ -5,7 +5,7 @@ export async function guidanceAPI({path,method,body,session,query,response,fail}
  if(!session)return fail('로그인이 필요합니다.',401);
  if(path==='/student/guidance'){
   if(method!=='GET')return fail('허용되지 않는 요청입니다.',405);
-  return response({guidance:(await query(`SELECT g.content,g.updated_at,c.title AS course_title,c.start_date AS course_start,c.end_date AS course_end,u.name AS instructor_name FROM learning_guidance g JOIN courses c ON c.id=g.course_id JOIN app_users u ON u.id=g.updated_by WHERE g.student_id=$1 AND g.published=1 AND c.deleted_at IS NULL AND EXISTS(SELECT 1 FROM json_each(c.student_ids) WHERE value=$1) ORDER BY g.updated_at DESC`,[session.id])).rows});
+  return response({guidance:(await query(`SELECT g.course_id,g.content,g.updated_at,c.title AS course_title,c.start_date AS course_start,c.end_date AS course_end,u.name AS instructor_name FROM learning_guidance g JOIN courses c ON c.id=g.course_id JOIN app_users u ON u.id=g.updated_by WHERE g.student_id=$1 AND g.published=1 AND c.deleted_at IS NULL AND EXISTS(SELECT 1 FROM json_each(c.student_ids) WHERE value=$1) ORDER BY g.updated_at DESC`,[session.id])).rows});
  }
  if(!['instructor','admin'].includes(session.role))return fail('강사만 접근할 수 있습니다.',403);
  // Instruction documents (Markdown) used to steer AI drafts; several can be registered, e.g. one per course.

@@ -64,10 +64,10 @@ async function renderTeacherGuidance(){
 }
 async function renderStudentGuidance(){
  shell();startLoading('학습 방향을 불러오고 있습니다…');
- try{const {guidance}=await api('/student/guidance');if(view!=='guidance')return;
+ try{const [{guidance},lp]=await Promise.all([api('/student/guidance'),api('/student/learning-path').catch(()=>({paths:[]}))]);if(view!=='guidance')return;
  $('#main').innerHTML=`<section class="intro"><span class="eyebrow">MY NEXT STEP</span><h1>학습 방향 ${AI_MARK}</h1><p>시험 기록을 바탕으로 AI가 분석하고 강사님이 확정한 나만의 학습 방향입니다.</p></section>${guidance.length>1?`<div class="subtabs inline g-course-tabs" role="tablist">${guidance.map((g,i)=>`<button type="button" data-i="${i}" class="${i===0?'selected':''}">${escape(g.course_title)}</button>`).join('')}</div>`:''}<div id="g-student"></div>`;
  const draw=i=>{const g=guidance[i];if(!g){$('#g-student').innerHTML='<section class="panel g-empty"><h2>아직 공개된 학습 방향이 없습니다</h2><p>강사님이 학습 방향을 확정하면 여기에 표시됩니다. 먼저 성적 대시보드에서 복습할 개념을 확인해 보세요.</p><button class="primary" data-view="grades">성적 대시보드</button></section>';bindViews();return;}
-  $('#g-student').innerHTML=`<section class="panel g-sheet"><div class="g-sheet-head"><div><span class="eyebrow">${escape(g.course_title)}${escape(coursePeriod(g))}</span><h2>나의 학습 방향</h2></div><div class="g-meta"><span class="g-state g-pub">강사 확정</span><span>${escape(g.instructor_name)} 강사 · ${date(g.updated_at)} 업데이트</span></div></div>${renderGuidanceCards(g.content)}<div class="g-sheet-foot"><button class="secondary" data-view="path">러닝 패스 보기</button><button class="secondary" data-view="grades">성적 대시보드</button></div></section>`;bindViews();};
+  $('#g-student').innerHTML=`<section class="panel g-sheet"><div class="g-sheet-head"><div><span class="eyebrow">${escape(g.course_title)}${escape(coursePeriod(g))}</span><h2>나의 학습 방향</h2></div><div class="g-meta"><span class="g-state g-pub">강사 확정</span><span>${escape(g.instructor_name)} 강사 · ${date(g.updated_at)} 업데이트</span></div></div>${guidanceVisuals(g,(lp.paths||[]).find(p=>p.course_id===g.course_id))}${renderGuidanceCards(g.content)}<div class="g-sheet-foot"><button class="secondary" data-view="path">러닝 패스 보기</button><button class="secondary" data-view="grades">성적 대시보드</button></div></section>`;applyGuidanceVisuals($("#g-student"));bindViews();};
  document.querySelectorAll('.g-course-tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.g-course-tabs button').forEach(x=>x.classList.toggle('selected',x===b));draw(Number(b.dataset.i));});
  draw(0);
  }catch(e){if(view==='guidance')$('#main').innerHTML=`<section class="panel"><p>${escape(e.message)}</p><button class="secondary" id="guidance-retry">다시 시도</button></section>`;$('#guidance-retry')?.addEventListener('click',renderStudentGuidance);}
@@ -106,4 +106,43 @@ function renderPromptPanel(prompts,learners){
  $('#prompt-new').onclick=()=>open({});
  panel.querySelectorAll('.prompt-edit').forEach(b=>b.onclick=()=>open(prompts[b.dataset.i]));
  panel.querySelectorAll('.prompt-delete').forEach(b=>b.onclick=async()=>{const p=prompts[b.dataset.i];if(!confirm(`'${p.title}' 지시문을 삭제할까요?`))return;try{await api('/instructor/guidance/prompts',{method:'POST',body:JSON.stringify({id:p.id,delete:true})});await reload('지시문을 삭제했습니다.');}catch(e){toast(e.message);}});
+}
+
+// Visual summary above the guidance cards: benchmark ring, next-exam prediction range, module strengths and a 2-week plan.
+// Values come from the learning path (scores, 3rd-year benchmark estimates); no AI call.
+function guidanceVisuals(g,path){
+ if(!path)return '';
+ const s=lpSummarize(path),b=s.bench,taken=s.steps.filter(st=>st.score!=null);
+ if(!taken.length)return '';
+ const scores=taken.map(st=>st.score),mean=scores.reduce((a,c)=>a+c,0)/scores.length;
+ const sd=Math.sqrt(scores.reduce((a,c)=>a+(c-mean)**2,0)/scores.length);
+ const next=s.steps.find(st=>st.next)||s.steps.find(st=>st.state==='plan');
+ const exp=next?.expected??Math.round(mean),spread=Math.max(5,Math.min(15,Math.round(sd/2+4)));
+ const lo=Math.max(0,exp-spread),hi=Math.min(100,exp+spread);
+ const ratio=b.target?Math.min(100,Math.round(b.me/b.target*100)):0;
+ const R=34,C=2*Math.PI*R,dash=(C*ratio/100).toFixed(1);
+ const ring=`<div class="gv-card gv-ring"><span class="gv-label">현업 3년차 기준 달성률</span><div class="gv-ring-wrap"><svg viewBox="0 0 84 84" width="96" height="96" aria-hidden="true"><circle cx="42" cy="42" r="${R}" fill="none" stroke="#eef0f3" stroke-width="9"/><circle cx="42" cy="42" r="${R}" fill="none" stroke="url(#gvg)" stroke-width="9" stroke-linecap="round" stroke-dasharray="${dash} ${C.toFixed(1)}" transform="rotate(-90 42 42)"/><defs><linearGradient id="gvg" x1="0" x2="1"><stop offset="0" stop-color="#fbbf24"/><stop offset="1" stop-color="#f38020"/></linearGradient></defs></svg><strong>${ratio}<small>%</small></strong></div><span class="gv-sub">나 ${b.me}점 / 기준 ${b.target}점 <em>(추정)</em></span></div>`;
+ const pred=next?`<div class="gv-card gv-pred"><span class="gv-label">다음 평가 예상 점수 <em class="gv-est">추정</em></span><strong class="gv-big">${lo}~${hi}<small>점</small></strong><span class="gv-sub">${next.week}주차 · ${escape(next.title)}</span><div class="gv-gauge"><span class="gv-band" data-l="${lo}" data-w="${hi-lo}"></span><span class="gv-exp" data-l="${exp}"></span>${next.benchmark!=null?`<span class="gv-bm" data-l="${next.benchmark}" title="3년차 기준 ${next.benchmark}점"></span>`:''}</div><div class="gv-gauge-axis"><span>0</span>${next.benchmark!=null?`<span class="gv-bm-label" data-l="${next.benchmark}">◆ 3년차 ${next.benchmark}</span>`:''}<span>100</span></div></div>`:'';
+ const sorted=[...taken].sort((a,c)=>c.score-a.score);
+ const bars=`<div class="gv-card gv-mods"><span class="gv-label">주차별 강점·보완</span>${sorted.map(st=>`<div class="gv-mod"><span class="gv-mod-name">${st.week}주차 · ${escape(st.title)}</span><div class="gv-mod-bar"><span class="${st.score>=80?'good':st.score<60?'weak':'mid'}" data-w="${st.score}"></span>${st.benchmark!=null?`<i data-l="${st.benchmark}"></i>`:''}</div><b>${st.score}</b></div>`).join('')}<div class="gv-mod-legend"><span><i class="good"></i>강점 80+</span><span><i class="mid"></i>보통</span><span><i class="weak"></i>보완 60 미만</span><span><i class="bm"></i>3년차 기준</span></div></div>`;
+ // 2-week plan from the "plan" section, spread across the next 14 days.
+ const plan=parseGuidance(g.content).find(x=>x.kind==='plan');
+ const items=(plan?.lines||[]).map(l=>l.replace(/^\s*(?:\d+[.)]|[-*•])\s*/,'').trim()).filter(Boolean).slice(0,6);
+ const today=new Date();today.setHours(0,0,0,0);
+ const key=`lms.plan.${g.course_id}.${String(g.updated_at).slice(0,10)}`;let done=[];try{done=JSON.parse(localStorage.getItem(key)||'[]');}catch{}
+ const tl=items.length?`<div class="gv-card gv-plan" data-key="${escape(key)}"><span class="gv-label">2주 학습 계획 체크리스트</span><div class="gv-tl">${items.map((t,i)=>{const d=new Date(+today+Math.round((i+1)*13/items.length)*864e5);return `<label class="gv-tl-item${done.includes(i)?' done':''}"><input type="checkbox" data-i="${i}" ${done.includes(i)?'checked':''}><span class="gv-tl-date">${d.getMonth()+1}.${String(d.getDate()).padStart(2,'0')}</span><span class="gv-tl-text">${rich(t.replace(/\*\*/g,''))}</span></label>`;}).join('')}</div><div class="gv-plan-progress"><span data-w="${Math.round(done.length*100/items.length)}"></span></div><span class="gv-sub gv-plan-count">${done.length} / ${items.length} 완료 · ${today.getMonth()+1}.${today.getDate()} ~ ${new Date(+today+13*864e5).getMonth()+1}.${new Date(+today+13*864e5).getDate()}</span></div>`:'';
+ return `<div class="gv-grid">${ring}${pred}${bars}${tl}</div>`;
+}
+function applyGuidanceVisuals(root){
+ if(!root)return;
+ root.querySelectorAll('.gv-grid [data-w]').forEach(el=>el.style.width=el.dataset.w+'%');
+ root.querySelectorAll('.gv-grid [data-l]').forEach(el=>el.style.left=el.dataset.l+'%');
+ root.querySelectorAll('.gv-plan').forEach(card=>{
+  const key=card.dataset.key,boxes=[...card.querySelectorAll('input[type=checkbox]')];
+  const sync=()=>{const done=boxes.filter(b=>b.checked).map(b=>Number(b.dataset.i));try{localStorage.setItem(key,JSON.stringify(done));}catch{}
+   boxes.forEach(b=>b.closest('.gv-tl-item').classList.toggle('done',b.checked));
+   card.querySelector('.gv-plan-progress span').style.width=Math.round(done.length*100/boxes.length)+'%';
+   const c=card.querySelector('.gv-plan-count');c.textContent=c.textContent.replace(/^\d+ \/ \d+/,`${done.length} / ${boxes.length}`);};
+  boxes.forEach(b=>b.onchange=sync);
+ });
 }

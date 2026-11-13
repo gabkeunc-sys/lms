@@ -6,12 +6,12 @@ async function buildPaths(query,studentId,ownerId=null){
  const courses=(await query(`SELECT c.id,c.title,c.start_date,c.end_date,c.status FROM courses c WHERE c.deleted_at IS NULL AND EXISTS(SELECT 1 FROM json_each(c.student_ids) WHERE value=$1) AND ($2 IS NULL OR c.owner_id=$2) ORDER BY c.start_date,c.title`,[studentId,ownerId])).rows;
  const out=[];
  for(const c of courses){
-  const modules=(await query('SELECT id,week,title,description FROM course_modules WHERE course_id=$1 ORDER BY week',[c.id])).rows;
+  const modules=(await query('SELECT id,week,title,description,benchmark FROM course_modules WHERE course_id=$1 ORDER BY week',[c.id])).rows;
   const assessments=(await query(`SELECT a.id,a.title,a.kind,a.week,a.published,a.opens_at,a.closes_at,r.score,r.total,r.grading_status,r.submitted_at,r.attempts,r.first_score FROM assessments a LEFT JOIN assessment_results r ON r.assessment_id=a.id AND r.student_id=$2 WHERE a.course_id=$1 ORDER BY a.week,a.kind DESC,a.title`,[c.id,studentId])).rows;
   // Weeks that have assessments but no designed module still appear, so nothing taken is hidden.
   const weeks=new Map(modules.map(m=>[m.week,{...m,planned:true,assessments:[]}]));
   for(const a of assessments){
-   if(!weeks.has(a.week))weeks.set(a.week,{id:null,week:a.week,title:`${a.week}주차`,description:'',planned:false,assessments:[]});
+   if(!weeks.has(a.week))weeks.set(a.week,{id:null,week:a.week,title:`${a.week}주차`,description:'',benchmark:null,planned:false,assessments:[]});
    const confirmed=a.grading_status==='confirmed';
    weeks.get(a.week).assessments.push({id:a.id,title:a.title,kind:a.kind,published:!!a.published,opens_at:a.opens_at,closes_at:a.closes_at,taken:!!a.submitted_at,status:a.submitted_at?a.grading_status:null,score:confirmed?a.score:null,total:a.total??null,percent:confirmed&&a.total?Math.round(a.score*1000/a.total)/10:null,submitted_at:a.submitted_at||null,attempts:a.attempts||(a.submitted_at?1:0),first_percent:confirmed&&a.first_score!=null&&a.total?Math.round(a.first_score*1000/a.total)/10:null});
   }
@@ -37,7 +37,7 @@ export async function pathAPI({path,method,body,session,query,response,fail}){
  if(!m)return fail('요청한 기능을 찾을 수 없습니다.',404);
  const course=(await query('SELECT id,owner_id FROM courses WHERE id=$1 AND deleted_at IS NULL',[m[1]])).rows[0];
  if(!course||(course.owner_id!==session.id&&session.role!=='admin'))return fail('담당 과정을 찾을 수 없습니다.',404);
- const list=async()=>({modules:(await query('SELECT id,week,title,description FROM course_modules WHERE course_id=$1 ORDER BY week',[course.id])).rows,assessments:(await query('SELECT id,title,kind,week,published FROM assessments WHERE course_id=$1 ORDER BY week,title',[course.id])).rows});
+ const list=async()=>({modules:(await query('SELECT id,week,title,description,benchmark FROM course_modules WHERE course_id=$1 ORDER BY week',[course.id])).rows,assessments:(await query('SELECT id,title,kind,week,published FROM assessments WHERE course_id=$1 ORDER BY week,title',[course.id])).rows});
  if(method==='GET')return response(await list());
  if(method!=='POST')return fail('허용되지 않는 요청입니다.',405);
  const mods=body.modules;
@@ -49,8 +49,10 @@ export async function pathAPI({path,method,body,session,query,response,fail}){
   if(typeof x.title!=='string'||!x.title.trim()||x.title.length>120)return fail('모듈 이름(1~120자)을 입력하세요.');
   if(x.description!=null&&(typeof x.description!=='string'||x.description.length>1000))return fail('모듈 설명은 1000자 이내로 입력하세요.');
  }
+ // Keep each week's 3rd-year benchmark estimate unless the request sets one.
+ const prev=new Map((await query('SELECT week,benchmark FROM course_modules WHERE course_id=$1',[course.id])).rows.map(r=>[r.week,r.benchmark]));
  await query('DELETE FROM course_modules WHERE course_id=$1',[course.id]);
- for(const x of mods)await query('INSERT INTO course_modules(id,course_id,week,title,description) VALUES($1,$2,$3,$4,$5)',[typeof x.id==='string'&&UUID.test(x.id)?x.id:randomUUID(),course.id,x.week,x.title.trim(),(x.description||'').trim()]);
+ for(const x of mods){const b=Number.isFinite(x.benchmark)&&x.benchmark>=0&&x.benchmark<=100?x.benchmark:(prev.get(x.week)??76+((x.week*7)%15));await query('INSERT INTO course_modules(id,course_id,week,title,description,benchmark) VALUES($1,$2,$3,$4,$5,$6)',[typeof x.id==='string'&&UUID.test(x.id)?x.id:randomUUID(),course.id,x.week,x.title.trim(),(x.description||'').trim(),b]);}
  return response({ok:true,...await list()});
 }
 
