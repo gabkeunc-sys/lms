@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {createTestDatabase} from './helpers/d1.mjs';import {pathAPI} from '../server/path.mjs';
 test('weekly modules drive the learning path and only the course owner can edit them',async()=>{
- const db=await createTestDatabase({migrations:['0001_schema.sql','0004_course_modules.sql','0006_module_benchmarks.sql','0007_operations.sql','0008_teaching_tools.sql']});
+ const db=await createTestDatabase({migrations:['0001_schema.sql','0004_course_modules.sql','0006_module_benchmarks.sql','0007_operations.sql','0008_teaching_tools.sql','0009_learning_tools.sql']});
  const teacher='10000000-0000-4000-8000-000000000001',student='10000000-0000-4000-8000-000000000002',other='10000000-0000-4000-8000-000000000003',course='20000000-0000-4000-8000-000000000001',exam='30000000-0000-4000-8000-000000000001';
  for(const [id,role]of [[teacher,'instructor'],[student,'student'],[other,'instructor']])await db.query('INSERT INTO app_users(id,name,email,password_hash,role) VALUES($1,$2,$3,$4,$5)',[id,role,id+'@example.com','unused',role]);
  await db.query('INSERT INTO courses(id,owner_id,title,student_ids) VALUES($1,$2,$3,$4)',[course,teacher,'웹 기초',JSON.stringify([student])]);
