@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {createTestDatabase} from './helpers/d1.mjs';import {guidanceAPI} from '../server/guidance.mjs';
 test('guidance ownership, publication, revision conflicts and student isolation',async()=>{
- const db=await createTestDatabase({migrations:['0001_schema.sql','0007_operations.sql','0008_teaching_tools.sql','0009_learning_tools.sql']});try{
+ const db=await createTestDatabase({migrations:['0001_schema.sql','0007_operations.sql','0008_teaching_tools.sql','0009_learning_tools.sql','0010_certificates.sql']});try{
  const teacher='10000000-0000-4000-8000-000000000001',student='10000000-0000-4000-8000-000000000002',other='10000000-0000-4000-8000-000000000003',course='20000000-0000-4000-8000-000000000001';
  for(const [id,role]of [[teacher,'instructor'],[student,'student'],[other,'instructor']])await db.query('INSERT INTO app_users(id,name,email,password_hash,role) VALUES($1,$2,$3,$4,$5)',[id,role,id+'@example.com','unused',role]);
  await db.query('INSERT INTO courses(id,owner_id,title,student_ids) VALUES($1,$2,$3,$4)',[course,teacher,'웹 기초',JSON.stringify([student])]);

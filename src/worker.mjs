@@ -1,6 +1,7 @@
 // Cloudflare Workers entry point: /api/* goes to the LMS API backed by D1, everything else is served from public/.
 import {createHandler} from '../server/auth.mjs';
 import {createDatabase} from '../server/db.mjs';
+import {verifyPage} from '../server/certs.mjs';
 
 const SECURITY_HEADERS = {
  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
@@ -18,6 +19,12 @@ const handlerFor = env => {
 export default {
  async fetch(request, env) {
   const url = new URL(request.url);
+  // Public certificate verification page, opened from the QR code on each certificate.
+  const vf = url.pathname.match(/^\/verify\/([A-Za-z0-9-]{1,40})\/?$/);
+  if (vf && request.method === 'GET') {
+   const html = await verifyPage(createDatabase(env.DB).query, vf[1]);
+   return new Response(html, {headers: {'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', ...SECURITY_HEADERS}});
+  }
   if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
   // Question images are public by unguessable id so <img> tags work everywhere.
   const img = url.pathname.match(/^\/api\/images\/([a-f0-9-]{36})$/);

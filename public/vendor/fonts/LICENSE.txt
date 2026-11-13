@@ -1,0 +1,2 @@
+Noto Serif KR (Bold, subset: ASCII + Hangul syllables) by Google, SIL Open Font License 1.1. https://openfontlicense.org
+Used to draw names on completion certificates.
