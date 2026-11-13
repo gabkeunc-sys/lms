@@ -30,7 +30,7 @@
 `npx wrangler d1 execute lms --remote --command "UPDATE app_users SET role='admin' WHERE id='<확인된 ID>'"`
 이메일 문자열만 일치한다고 자동 승격하지 않습니다.
 
-데모 계정(`student01~10@example.com`, 강사 `조현우`)은 비밀번호가 비활성화된 상태로 들어갑니다. 사용하려면 관리자가 회원 관리에서 비밀번호를 초기화합니다(학생 계정). 강사 데모 계정은 D1에서 직접 비밀번호 해시를 설정해야 합니다.
+실습용 계정: 강사 `teacher01@example.com`, `teacher02@example.com`, 학생 `student01~06, 08~10@example.com`이고 비밀번호는 모두 `Practice-2026!`입니다(배포된 D1에 설정, 저장소 시드에는 비활성 상태로 들어 있음).
 
 ## 보안
 비밀번호는 무작위 salt와 PBKDF2-SHA256(WebCrypto, 기본 100,000회)으로 해시합니다. 반복 횟수는 해시에 함께 저장되므로 `PBKDF2_ITERATIONS` 변수로 바꿔도 기존 계정은 그대로 로그인됩니다. Workers 무료 플랜의 요청당 CPU 한도(10ms) 때문에 scrypt 대신 사용합니다. 8시간 세션의 원문 토큰은 Secure/HttpOnly/SameSite 쿠키에만 저장하고 DB에는 SHA-256 해시를 저장합니다. 변경 API는 동일 출처와 JSON을 확인합니다. DB에 저장한 IP(`CF-Connecting-IP`)/이메일 해시 기반 요청 제한, 파라미터 쿼리, 서버 권한 검사를 사용합니다. 비활성화와 로그아웃은 세션을 폐기합니다. 관리자 계정은 이 UI에서 비활성화할 수 없습니다.
